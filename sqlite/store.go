@@ -70,7 +70,11 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_messages_space_seq ON messages (space_id, seq);
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`ALTER TABLE spaces ADD COLUMN content_schema_json TEXT`)
+	return nil
 }
 
 func (s *SQLiteStore) PutNode(node ioa.Node) error {
@@ -159,6 +163,38 @@ func (s *SQLiteStore) PutSpaceIfAbsent(space ioa.Space) (ioa.Space, error) {
 func (s *SQLiteStore) GetSpace(spaceID string) (ioa.Space, bool, error) {
 	row := s.db.QueryRow(`SELECT id, name FROM spaces WHERE id = ?`, spaceID)
 	return scanSpace(row)
+}
+
+func (s *SQLiteStore) SetContentSchema(spaceID string, schema map[string]interface{}) error {
+	if schema == nil {
+		_, err := s.db.Exec(`UPDATE spaces SET content_schema_json = NULL WHERE id = ?`, spaceID)
+		return err
+	}
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE spaces SET content_schema_json = ? WHERE id = ?`, string(data), spaceID)
+	return err
+}
+
+func (s *SQLiteStore) GetContentSchema(spaceID string) (map[string]interface{}, error) {
+	var raw sql.NullString
+	err := s.db.QueryRow(`SELECT content_schema_json FROM spaces WHERE id = ?`, spaceID).Scan(&raw)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !raw.Valid {
+		return nil, nil
+	}
+	var schema map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.String), &schema); err != nil {
+		return nil, err
+	}
+	return schema, nil
 }
 
 func (s *SQLiteStore) JoinSpace(spaceID, nodeID, description string) error {

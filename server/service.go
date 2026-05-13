@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/chainreactors/ioa"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 type Service struct {
@@ -114,6 +116,24 @@ func (s *Service) SendMessage(ctx context.Context, spaceID, callerNodeID string,
 	}
 	if body.Content == nil {
 		return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content is required")
+	}
+	if body.ContentSchema != nil {
+		if err := compileContentSchema(body.ContentSchema); err != nil {
+			return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content_schema is not valid JSON Schema: %s", err)
+		}
+		if err := s.store.SetContentSchema(spaceID, body.ContentSchema); err != nil {
+			return ioa.Message{}, err
+		}
+	} else {
+		schema, err := s.store.GetContentSchema(spaceID)
+		if err != nil {
+			return ioa.Message{}, err
+		}
+		if schema != nil {
+			if err := validateContent(body.Content, schema); err != nil {
+				return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content does not match space schema: %s", err)
+			}
+		}
 	}
 	refs := emptyRef()
 	if body.Refs != nil {
@@ -227,11 +247,16 @@ func (s *Service) spaceInfo(space ioa.Space) (ioa.SpaceInfo, error) {
 	if err != nil {
 		return ioa.SpaceInfo{}, err
 	}
+	schema, err := s.store.GetContentSchema(space.ID)
+	if err != nil {
+		return ioa.SpaceInfo{}, err
+	}
 	info := ioa.SpaceInfo{
-		ID:           space.ID,
-		Name:         space.Name,
-		Nodes:        make([]ioa.SpaceNode, 0, len(nodes)),
-		MessageCount: count,
+		ID:            space.ID,
+		Name:          space.Name,
+		Nodes:         make([]ioa.SpaceNode, 0, len(nodes)),
+		MessageCount:  count,
+		ContentSchema: schema,
 	}
 	for _, node := range nodes {
 		info.Nodes = append(info.Nodes, ioa.SpaceNode{
@@ -281,6 +306,51 @@ func emptyRef() ioa.Ref {
 		Messages: []string{},
 		Nodes:    []string{},
 	}
+}
+
+func compileContentSchema(schema map[string]interface{}) error {
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return err
+	}
+	var v interface{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("schema.json", v); err != nil {
+		return err
+	}
+	_, err = c.Compile("schema.json")
+	return err
+}
+
+func validateContent(content, schema map[string]interface{}) error {
+	schemaData, err := json.Marshal(schema)
+	if err != nil {
+		return err
+	}
+	var schemaValue interface{}
+	if err := json.Unmarshal(schemaData, &schemaValue); err != nil {
+		return err
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("schema.json", schemaValue); err != nil {
+		return err
+	}
+	compiled, err := c.Compile("schema.json")
+	if err != nil {
+		return err
+	}
+	contentData, err := json.Marshal(content)
+	if err != nil {
+		return err
+	}
+	var contentValue interface{}
+	if err := json.Unmarshal(contentData, &contentValue); err != nil {
+		return err
+	}
+	return compiled.Validate(contentValue)
 }
 
 func completeRef(ref ioa.Ref) ioa.Ref {

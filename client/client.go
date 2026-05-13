@@ -130,12 +130,12 @@ func (c *Client) Space(ctx context.Context, name, description string) (ioa.Space
 	return info, nil
 }
 
-func (c *Client) Send(ctx context.Context, spaceID string, content map[string]interface{}, refs *ioa.Ref) (ioa.Message, error) {
+func (c *Client) Send(ctx context.Context, spaceID string, body ioa.SendMessage) (ioa.Message, error) {
 	if c.nodeID == "" {
 		return ioa.Message{}, fmt.Errorf("No sender: call register_node() first")
 	}
 	var message ioa.Message
-	if err := c.do(ctx, http.MethodPost, "/spaces/"+url.PathEscape(spaceID)+"/messages", map[string]string{"X-Node-ID": c.nodeID}, ioa.SendMessage{Content: content, Refs: refs}, &message); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/spaces/"+url.PathEscape(spaceID)+"/messages", map[string]string{"X-Node-ID": c.nodeID}, body, &message); err != nil {
 		return ioa.Message{}, err
 	}
 	return message, nil

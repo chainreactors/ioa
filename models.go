@@ -6,24 +6,24 @@ type Ref struct {
 }
 
 type Node struct {
-	ID   string         `json:"id"`
-	Name string         `json:"name"`
+	ID   string                 `json:"id"`
+	Name string                 `json:"name"`
 	Meta map[string]interface{} `json:"meta"`
 }
 
 type Message struct {
-	ID      string         `json:"id"`
-	Sender  string         `json:"sender"`
+	ID      string                 `json:"id"`
+	Sender  string                 `json:"sender"`
 	Content map[string]interface{} `json:"content"`
-	Refs    Ref            `json:"refs"`
+	Refs    Ref                    `json:"refs"`
 }
 
 type MessageRecord struct {
-	ID      string         `json:"id"`
-	SpaceID string         `json:"space_id"`
-	Sender  string         `json:"sender"`
+	ID      string                 `json:"id"`
+	SpaceID string                 `json:"space_id"`
+	Sender  string                 `json:"sender"`
 	Content map[string]interface{} `json:"content"`
-	Refs    Ref            `json:"refs"`
+	Refs    Ref                    `json:"refs"`
 }
 
 type Space struct {
@@ -38,14 +38,15 @@ type SpaceNode struct {
 }
 
 type SpaceInfo struct {
-	ID           string      `json:"id"`
-	Name         string      `json:"name"`
-	Nodes        []SpaceNode `json:"nodes"`
-	MessageCount int         `json:"message_count"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Nodes         []SpaceNode            `json:"nodes"`
+	MessageCount  int                    `json:"message_count"`
+	ContentSchema map[string]interface{} `json:"content_schema,omitempty"`
 }
 
 type NodeCreate struct {
-	Name string         `json:"name"`
+	Name string                 `json:"name"`
 	Meta map[string]interface{} `json:"meta"`
 }
 
@@ -55,8 +56,9 @@ type SpaceCreate struct {
 }
 
 type SendMessage struct {
-	Content map[string]interface{} `json:"content"`
-	Refs    *Ref           `json:"refs,omitempty"`
+	Content       map[string]interface{} `json:"content"`
+	Refs          *Ref                   `json:"refs,omitempty"`
+	ContentSchema map[string]interface{} `json:"content_schema,omitempty"`
 }
 
 type ReadOptions struct {

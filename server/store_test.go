@@ -132,8 +132,111 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	}
 }
 
+func runContentSchemaTest(t *testing.T, store Store) {
+	t.Helper()
+	ctx := context.Background()
+	service := NewService(store)
+
+	node, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent"})
+	if err != nil {
+		t.Fatalf("RegisterNode error = %v", err)
+	}
+	space, err := service.CreateSpace(ctx, node.ID, ioa.SpaceCreate{Name: "schema-test", Description: "tester"})
+	if err != nil {
+		t.Fatalf("CreateSpace error = %v", err)
+	}
+
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"type": map[string]interface{}{"type": "string"},
+			"body": map[string]interface{}{"type": "string"},
+		},
+		"required": []interface{}{"type", "body"},
+	}
+
+	// Setting schema — the message itself is not validated
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content:       map[string]interface{}{"text": "I set the schema"},
+		ContentSchema: schema,
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(set schema) error = %v", err)
+	}
+
+	// SpaceInfo should include the schema
+	info, err := service.GetSpace(ctx, space.ID)
+	if err != nil {
+		t.Fatalf("GetSpace error = %v", err)
+	}
+	if info.ContentSchema == nil {
+		t.Fatalf("SpaceInfo.ContentSchema = nil, want schema")
+	}
+
+	// Compliant message passes
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"type": "task", "body": "do something"},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(compliant) error = %v", err)
+	}
+
+	// Non-compliant message fails with 422
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"wrong": "fields"},
+	})
+	if err == nil || statusOf(err) != 422 {
+		t.Fatalf("SendMessage(non-compliant) error = %v, want 422", err)
+	}
+
+	// Update schema to something different
+	newSchema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"status": map[string]interface{}{"type": "string"},
+		},
+		"required": []interface{}{"status"},
+	}
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content:       map[string]interface{}{"text": "updating schema"},
+		ContentSchema: newSchema,
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(update schema) error = %v", err)
+	}
+
+	// Old-format message now fails
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"type": "task", "body": "do something"},
+	})
+	if err == nil || statusOf(err) != 422 {
+		t.Fatalf("SendMessage(old format) error = %v, want 422", err)
+	}
+
+	// New-format message passes
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"status": "done"},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(new format) error = %v", err)
+	}
+
+	// Invalid schema is rejected
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content:       map[string]interface{}{"text": "bad schema"},
+		ContentSchema: map[string]interface{}{"type": 123},
+	})
+	if err == nil || statusOf(err) != 422 {
+		t.Fatalf("SendMessage(invalid schema) error = %v, want 422", err)
+	}
+}
+
 func TestMemoryStoreProtocol(t *testing.T) {
 	runStoreProtocolTest(t, NewMemoryStore())
+}
+
+func TestMemoryStoreContentSchema(t *testing.T) {
+	runContentSchemaTest(t, NewMemoryStore())
 }
 
 func messageIDs(messages []ioa.Message) []string {

@@ -13,7 +13,7 @@ type API interface {
 	NodeID() string
 	RegisterNode(ctx context.Context, name string, meta map[string]interface{}) (ioa.Node, error)
 	Space(ctx context.Context, name, description string) (ioa.SpaceInfo, error)
-	Send(ctx context.Context, spaceID string, content map[string]interface{}, refs *ioa.Ref) (ioa.Message, error)
+	Send(ctx context.Context, spaceID string, body ioa.SendMessage) (ioa.Message, error)
 	Read(ctx context.Context, spaceID string, opts ioa.ReadOptions) ([]ioa.Message, error)
 }
 
@@ -173,6 +173,10 @@ func (t *SendTool) Definition() ioa.ToolDefinition {
 						"description": "Structured message content",
 					},
 					"refs": refSchema(),
+					"content_schema": map[string]interface{}{
+						"type":        "object",
+						"description": "Optional JSON Schema to set on the space. All subsequent messages must have content conforming to this schema.",
+					},
 				},
 				"required": []string{"space_id", "content"},
 			},
@@ -182,9 +186,10 @@ func (t *SendTool) Definition() ioa.ToolDefinition {
 
 func (t *SendTool) Execute(ctx context.Context, arguments string) (string, error) {
 	var args struct {
-		SpaceID string         `json:"space_id"`
-		Content map[string]interface{} `json:"content"`
-		Refs    *ioa.Ref       `json:"refs"`
+		SpaceID       string                 `json:"space_id"`
+		Content       map[string]interface{} `json:"content"`
+		Refs          *ioa.Ref               `json:"refs"`
+		ContentSchema map[string]interface{} `json:"content_schema"`
 	}
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -195,7 +200,11 @@ func (t *SendTool) Execute(ctx context.Context, arguments string) (string, error
 	if args.Content == nil {
 		return "", fmt.Errorf("content is required")
 	}
-	message, err := t.base.client.Send(ctx, args.SpaceID, args.Content, args.Refs)
+	message, err := t.base.client.Send(ctx, args.SpaceID, ioa.SendMessage{
+		Content:       args.Content,
+		Refs:          args.Refs,
+		ContentSchema: args.ContentSchema,
+	})
 	if err != nil {
 		return "", err
 	}

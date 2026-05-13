@@ -28,10 +28,11 @@ type spaceCmd struct {
 }
 
 type sendCmd struct {
-	SpaceID string `long:"space" short:"s" description:"Space ID" required:"yes"`
-	Content string `long:"content" short:"c" description:"Message content JSON" required:"yes"`
-	RefMsgs string `long:"ref-messages" description:"Comma-separated message IDs to reference"`
-	RefNodes string `long:"ref-nodes" description:"Comma-separated node IDs to target"`
+	SpaceID       string `long:"space" short:"s" description:"Space ID" required:"yes"`
+	Content       string `long:"content" short:"c" description:"Message content JSON" required:"yes"`
+	RefMsgs       string `long:"ref-messages" description:"Comma-separated message IDs to reference"`
+	RefNodes      string `long:"ref-nodes" description:"Comma-separated node IDs to target"`
+	ContentSchema string `long:"content-schema" description:"JSON Schema for space content validation"`
 }
 
 type readCmd struct {
@@ -148,7 +149,15 @@ func runSend(ctx context.Context, c *client.Client, nodeName string, cmd sendCmd
 			refs.Nodes = splitComma(cmd.RefNodes)
 		}
 	}
-	msg, err := c.Send(ctx, cmd.SpaceID, content, refs)
+	body := ioa.SendMessage{Content: content, Refs: refs}
+	if cmd.ContentSchema != "" {
+		var schema map[string]interface{}
+		if err := json.Unmarshal([]byte(cmd.ContentSchema), &schema); err != nil {
+			return fmt.Errorf("invalid content-schema JSON: %s", err)
+		}
+		body.ContentSchema = schema
+	}
+	msg, err := c.Send(ctx, cmd.SpaceID, body)
 	if err != nil {
 		return err
 	}

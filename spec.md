@@ -178,13 +178,16 @@ Root             Thread           Tree              DAG
 
 ```json
 {
-  "id":            "string",
-  "name":          "string",
-  "nodes":         [{"id": "...", "name": "...", "description": "..."}],
-  "message_count": 0,
+  "id":             "string",
+  "name":           "string",
+  "nodes":          [{"id": "...", "name": "...", "description": "..."}],
+  "message_count":  0,
+  "content_schema": { ... },
   "start_messages": [Message, ...]
 }
 ```
+
+`content_schema` 仅在 Space 设置了 schema 时出现。
 
 Node 加入 Space 是声明性的——不产生 Message，不改变 Message Graph。
 
@@ -197,15 +200,18 @@ Node 加入 Space 是声明性的——不产生 Message，不改变 Message Gra
 | `space_id` | `string` | 是 |
 | `content` | `object` | 是 |
 | `refs` | `Ref` | 否 |
+| `content_schema` | `object` | 否 |
 
 **语义**：
 
 1. 自动确保 Node 已注册
 2. `content` 不可为 null
-3. `refs` 缺省为 `{"messages": [], "nodes": []}`
-4. 校验 refs 合法性（见 §3.3）
-5. 生成 Message ID，append 到 Space
-6. 返回完整 `Message`
+3. 若 `content_schema` 存在：验证其为合法 JSON Schema，存储为 Space 的 content schema。**该 Message 的 content 不被校验**
+4. 若 `content_schema` 不存在且 Space 已有 schema：校验 `content` 是否符合 schema，不符合则返回 `invalid_input` 错误
+5. `refs` 缺省为 `{"messages": [], "nodes": []}`
+6. 校验 refs 合法性（见 §3.3）
+7. 生成 Message ID，append 到 Space
+8. 返回完整 `Message`
 
 写入成功后，实现**应当**通知该 Space 的实时订阅者。
 
@@ -237,6 +243,20 @@ Node 加入 Space 是声明性的——不产生 Message，不改变 Message Gra
 
 **返回**：`Message[]`
 
+### 4.4 Content Schema（可选）
+
+Space 可以关联一个 JSON Schema，约束后续 Message 的 `content` 格式。
+
+**设置**：通过 `ioa_send` 的 `content_schema` 参数提交一个 JSON Schema 对象。schema 在写入前验证其自身合法性——非法 schema 被拒绝。设置 schema 的 Message 本身不受该 schema 约束。
+
+**校验**：后续不携带 `content_schema` 的 Message，其 `content` 按当前 Space schema 校验。校验失败返回 `invalid_input` 错误，包含具体字段路径和原因，供调用者（AI Agent）自行纠正后重试。
+
+**更新**：再次通过 `content_schema` 提交新 schema 即覆盖旧 schema。
+
+**发现**：`ioa_space` 的返回中包含当前 `content_schema`（如有），让新加入的 Agent 知道预期格式。
+
+**可选性**：未设置 schema 的 Space 不做任何 content 校验，行为与无 schema 时完全一致。
+
 ---
 
 ## 5. 身份
@@ -260,7 +280,7 @@ Node 向服务端提供 `name` 和可选 `meta`，服务端生成全局唯一 ID
 | 类别 | 触发条件 |
 |------|----------|
 | **not_found** | Node / Space / Message 不存在 |
-| **invalid_input** | 参数校验失败：name 为空、content 为 null、refs 引用不存在、limit 非正数等 |
+| **invalid_input** | 参数校验失败：name 为空、content 为 null、refs 引用不存在、limit 非正数、content 不符合 space schema、content_schema 不是合法 JSON Schema 等 |
 | **internal** | 实现内部错误 |
 
 错误响应必须包含人类可读的描述。具体格式由实现决定（参考实现使用 `{"detail": "..."}` + HTTP 状态码）。
@@ -278,6 +298,9 @@ Node 向服务端提供 `name` 和可选 `meta`，服务端生成全局唯一 ID
 - 公开 Message 只暴露 `id` / `sender` / `content` / `refs`
 - 关联子图包含完整祖先和后代
 - 读取模式按 §4.3 优先级分派
+- 若 Space 有 content schema，写入时校验 content（见 §4.4）
+- `content_schema` 本身必须是合法 JSON Schema，否则拒绝
+- 设置 schema 的 Message 不受该 schema 约束
 
 ### 实现可以（MAY）
 

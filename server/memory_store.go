@@ -7,21 +7,23 @@ import (
 )
 
 type MemoryStore struct {
-	mu         sync.RWMutex
-	nodes      map[string]ioa.Node
-	spaces     map[string]ioa.Space
-	spaceNames map[string]string
-	messages   map[string][]ioa.MessageRecord
-	spaceNodes map[string]map[string]string
+	mu           sync.RWMutex
+	nodes        map[string]ioa.Node
+	spaces       map[string]ioa.Space
+	spaceNames   map[string]string
+	messages     map[string][]ioa.MessageRecord
+	spaceNodes   map[string]map[string]string
+	spaceSchemas map[string]map[string]interface{}
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		nodes:      make(map[string]ioa.Node),
-		spaces:     make(map[string]ioa.Space),
-		spaceNames: make(map[string]string),
-		messages:   make(map[string][]ioa.MessageRecord),
-		spaceNodes: make(map[string]map[string]string),
+		nodes:        make(map[string]ioa.Node),
+		spaces:       make(map[string]ioa.Space),
+		spaceNames:   make(map[string]string),
+		messages:     make(map[string][]ioa.MessageRecord),
+		spaceNodes:   make(map[string]map[string]string),
+		spaceSchemas: make(map[string]map[string]interface{}),
 	}
 }
 
@@ -108,6 +110,23 @@ func (s *MemoryStore) GetSpaceNodes(spaceID string) ([]ioa.SpaceNodeRecord, erro
 		result = append(result, ioa.SpaceNodeRecord{Node: node, Description: description})
 	}
 	return result, nil
+}
+
+func (s *MemoryStore) SetContentSchema(spaceID string, schema map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if schema == nil {
+		delete(s.spaceSchemas, spaceID)
+	} else {
+		s.spaceSchemas[spaceID] = schema
+	}
+	return nil
+}
+
+func (s *MemoryStore) GetContentSchema(spaceID string) (map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.spaceSchemas[spaceID], nil
 }
 
 func (s *MemoryStore) AppendMessage(message ioa.MessageRecord) error {

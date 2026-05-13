@@ -63,6 +63,7 @@ func registerMCPTools(s *mcpserver.MCPServer, bridge *mcpBridge) {
 		mcp.WithString("space_id", mcp.Required(), mcp.Description("IOA space id")),
 		mcp.WithObject("content", mcp.Required(), mcp.Description("Structured message content")),
 		mcp.WithObject("refs", mcp.Description("Optional references: {\"messages\": [\"msg-id\"], \"nodes\": [\"node-id\"]}")),
+		mcp.WithObject("content_schema", mcp.Description("Optional JSON Schema to set on the space. All subsequent messages must have content conforming to this schema.")),
 	)
 	s.AddTool(sendTool, bridge.handleSend)
 
@@ -132,14 +133,22 @@ func (b *mcpBridge) handleSend(ctx context.Context, request mcp.CallToolRequest)
 		_ = json.Unmarshal(data, refs)
 	}
 
+	var contentSchema map[string]interface{}
+	if schemaRaw, has := args["content_schema"]; has && schemaRaw != nil {
+		if m, ok := schemaRaw.(map[string]interface{}); ok {
+			contentSchema = m
+		}
+	}
+
 	nodeID, err := b.ensureNode(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	message, err := b.service.SendMessage(ctx, spaceID, nodeID, ioa.SendMessage{
-		Content: content,
-		Refs:    refs,
+		Content:       content,
+		Refs:          refs,
+		ContentSchema: contentSchema,
 	})
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
