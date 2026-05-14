@@ -68,6 +68,10 @@ type ReadOptions struct {
 	All       bool
 }
 
+type ErrorResponse struct {
+	Detail string `json:"detail"`
+}
+
 type SpaceNodeRecord struct {
 	Node        Node
 	Description string

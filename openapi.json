@@ -1,0 +1,610 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "IOA is a multi-agent communication protocol server. Nodes register themselves, create or join spaces, and exchange messages in real time via HTTP and Server-Sent Events.",
+        "title": "IOA (Internet of Agent) API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "127.0.0.1:8765",
+    "basePath": "/",
+    "paths": {
+        "/nodes": {
+            "get": {
+                "description": "Return all registered nodes",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "List nodes",
+                "responses": {
+                    "200": {
+                        "description": "List of nodes",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ioa.Node"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Register a new node with the IOA server",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "Register node",
+                "parameters": [
+                    {
+                        "description": "Node registration payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ioa.NodeCreate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created node",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.Node"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/nodes/{nodeID}": {
+            "get": {
+                "description": "Return a specific node by its ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "Get node",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "nodeID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Node details",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.Node"
+                        }
+                    },
+                    "404": {
+                        "description": "Node not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces": {
+            "get": {
+                "description": "Return all spaces with their node counts and message counts",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "spaces"
+                ],
+                "summary": "List spaces",
+                "responses": {
+                    "200": {
+                        "description": "List of spaces",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ioa.SpaceInfo"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Create a new space or join an existing one. If x-node-id header is provided, the caller node joins the space.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "spaces"
+                ],
+                "summary": "Create space",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Caller node ID",
+                        "name": "x-node-id",
+                        "in": "header"
+                    },
+                    {
+                        "description": "Space creation payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ioa.SpaceCreate"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Space info",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.SpaceInfo"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceID}": {
+            "get": {
+                "description": "Return details of a specific space including its nodes and message count",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "spaces"
+                ],
+                "summary": "Get space",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Space details",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.SpaceInfo"
+                        }
+                    },
+                    "404": {
+                        "description": "Space not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceID}/messages": {
+            "get": {
+                "description": "Read messages from a space. Supports filtering by message context, pagination, and node-scoped reads.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "summary": "Read messages",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caller node ID (filters messages addressed to this node)",
+                        "name": "x-node-id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Return the context (ancestors/descendants) of this message",
+                        "name": "message_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pagination cursor: return messages after this ID",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of messages to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "If true, return all messages ignoring node filtering",
+                        "name": "all",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of messages",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ioa.Message"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Space not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid query parameters",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Send a message to the specified space. The sender is identified by the x-node-id header.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "summary": "Send message",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caller node ID (sender)",
+                        "name": "x-node-id",
+                        "in": "header"
+                    },
+                    {
+                        "description": "Message payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ioa.SendMessage"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created message",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.Message"
+                        }
+                    },
+                    "404": {
+                        "description": "Space not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceID}/messages/{messageID}/sse": {
+            "get": {
+                "description": "Open a Server-Sent Events stream filtered to messages related to the specified message",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Subscribe to message events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message ID to filter related events",
+                        "name": "messageID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of related ioa.Message events"
+                    },
+                    "404": {
+                        "description": "Space or message not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Streaming not supported",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceID}/sse": {
+            "get": {
+                "description": "Open a Server-Sent Events stream for all messages in the specified space",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Subscribe to space events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of ioa.Message events"
+                    },
+                    "404": {
+                        "description": "Space not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Streaming not supported",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "ioa.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "detail": {
+                    "type": "string"
+                }
+            }
+        },
+        "ioa.Message": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "id": {
+                    "type": "string"
+                },
+                "refs": {
+                    "$ref": "#/definitions/ioa.Ref"
+                },
+                "sender": {
+                    "type": "string"
+                }
+            }
+        },
+        "ioa.Node": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "meta": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "ioa.NodeCreate": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "ioa.Ref": {
+            "type": "object",
+            "properties": {
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "ioa.SendMessage": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "content_schema": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "refs": {
+                    "$ref": "#/definitions/ioa.Ref"
+                }
+            }
+        },
+        "ioa.SpaceCreate": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "ioa.SpaceInfo": {
+            "type": "object",
+            "properties": {
+                "content_schema": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message_count": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ioa.SpaceNode"
+                    }
+                }
+            }
+        },
+        "ioa.SpaceNode": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

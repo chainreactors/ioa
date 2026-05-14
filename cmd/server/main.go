@@ -68,6 +68,12 @@ func passThroughMiddleware(handler http.Handler, service *server.Service) http.H
 	return handler
 }
 
+//	@title			IOA (Internet of Agent) API
+//	@version		1.0
+//	@description	IOA is a multi-agent communication protocol server. Nodes register themselves, create or join spaces, and exchange messages in real time via HTTP and Server-Sent Events.
+//
+//	@host		127.0.0.1:8765
+//	@BasePath	/
 func main() {
 	var opts options
 	parser := goflags.NewParser(&opts, goflags.Default&^goflags.PrintErrors)
