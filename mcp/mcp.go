@@ -55,6 +55,7 @@ func registerMCPTools(s *mcpserver.MCPServer, bridge *mcpBridge) {
 		mcp.WithDescription("Create or join an IOA message space for collaboration with other nodes. Returns space info with id, name, nodes, and message count."),
 		mcp.WithString("name", mcp.Required(), mcp.Description("IOA space name")),
 		mcp.WithString("description", mcp.Required(), mcp.Description("Your role or intent in this space")),
+		mcp.WithArray("tags", mcp.WithStringItems(), mcp.Description("Optional labels for ownership, workspace routing, or domain classification")),
 	)
 	s.AddTool(spaceTool, bridge.handleSpace)
 
@@ -101,6 +102,7 @@ func (b *mcpBridge) handleSpace(ctx context.Context, request mcp.CallToolRequest
 	info, err := b.service.CreateSpace(ctx, nodeID, ioa.SpaceCreate{
 		Name:        name,
 		Description: description,
+		Tags:        request.GetStringSlice("tags", nil),
 	})
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

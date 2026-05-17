@@ -1,6 +1,8 @@
 package server
 
 import (
+	"slices"
+	"sort"
 	"sync"
 
 	"github.com/chainreactors/ioa"
@@ -66,9 +68,15 @@ func (s *MemoryStore) PutSpaceIfAbsent(space ioa.Space) (ioa.Space, error) {
 	defer s.mu.Unlock()
 	if existingID, ok := s.spaceNames[space.Name]; ok {
 		if existing, ok := s.spaces[existingID]; ok {
+			mergedTags := ioa.MergeTags(existing.Tags, space.Tags)
+			if !slices.Equal(mergedTags, existing.Tags) {
+				existing.Tags = mergedTags
+				s.spaces[existingID] = existing
+			}
 			return existing, nil
 		}
 	}
+	space.Tags = ioa.NormalizeTags(space.Tags)
 	s.spaces[space.ID] = space
 	s.spaceNames[space.Name] = space.ID
 	if _, ok := s.messages[space.ID]; !ok {
@@ -193,6 +201,53 @@ func (s *MemoryStore) GetRelatedMessages(spaceID, messageID, after string, limit
 	return RelatedMessages(all, messageID, after, limit), nil
 }
 
+func (s *MemoryStore) GetInboxMessages(nodeID, after string, limit int) ([]ioa.MessageRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	spaceIDs := make([]string, 0)
+	for spaceID, members := range s.spaceNodes {
+		if _, ok := members[nodeID]; ok {
+			spaceIDs = append(spaceIDs, spaceID)
+		}
+	}
+	sort.Strings(spaceIDs)
+	var allMessages []ioa.MessageRecord
+	for _, spaceID := range spaceIDs {
+		allMessages = append(allMessages, cloneMessages(s.messages[spaceID])...)
+	}
+	filtered := make([]ioa.MessageRecord, 0, len(allMessages))
+	for _, record := range allMessages {
+		if ContainsString(record.Refs.Nodes, nodeID) {
+			filtered = append(filtered, record)
+		}
+	}
+	return WindowMessages(filtered, allMessages, after, limit), nil
+}
+
+func (s *MemoryStore) ListMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	all := s.messagesInScope(filter.SpaceID)
+	filtered := FilterMessages(all, filter)
+	return WindowMessages(filtered, all, filter.After, filter.Limit), nil
+}
+
+func (s *MemoryStore) messagesInScope(spaceID string) []ioa.MessageRecord {
+	if spaceID != "" {
+		return cloneMessages(s.messages[spaceID])
+	}
+	spaceIDs := make([]string, 0, len(s.messages))
+	for id := range s.messages {
+		spaceIDs = append(spaceIDs, id)
+	}
+	sort.Strings(spaceIDs)
+	var messages []ioa.MessageRecord
+	for _, id := range spaceIDs {
+		messages = append(messages, cloneMessages(s.messages[id])...)
+	}
+	return messages
+}
+
 func cloneMessages(messages []ioa.MessageRecord) []ioa.MessageRecord {
 	cloned := make([]ioa.MessageRecord, len(messages))
 	for i, message := range messages {
@@ -287,4 +342,30 @@ func ContainsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func FilterMessages(messages []ioa.MessageRecord, filter ioa.MessageFilter) []ioa.MessageRecord {
+	filtered := make([]ioa.MessageRecord, 0, len(messages))
+	for _, message := range messages {
+		if filter.SpaceID != "" && message.SpaceID != filter.SpaceID {
+			continue
+		}
+		if filter.MessageID != "" && message.ID != filter.MessageID {
+			continue
+		}
+		if filter.Sender != "" && message.Sender != filter.Sender {
+			continue
+		}
+		if filter.NodeID != "" && message.Sender != filter.NodeID && !ContainsString(message.Refs.Nodes, filter.NodeID) {
+			continue
+		}
+		if filter.RefMessage != "" && !ContainsString(message.Refs.Messages, filter.RefMessage) {
+			continue
+		}
+		if filter.RefNode != "" && !ContainsString(message.Refs.Nodes, filter.RefNode) {
+			continue
+		}
+		filtered = append(filtered, message)
+	}
+	return filtered
 }

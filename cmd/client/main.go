@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/chainreactors/ioa"
 	"github.com/chainreactors/ioa/client"
@@ -21,6 +22,8 @@ type options struct {
 }
 
 type spaceCmd struct {
+	Tags []string `long:"tag" description:"Space tag. Repeat for multiple tags."`
+
 	Positional struct {
 		Name        string `positional-arg-name:"name" required:"yes"`
 		Description string `positional-arg-name:"description" required:"yes"`
@@ -113,7 +116,7 @@ func runSpace(ctx context.Context, c *client.Client, nodeName string, cmd spaceC
 	if err := ensureNode(ctx, c, nodeName); err != nil {
 		return err
 	}
-	info, err := c.Space(ctx, cmd.Positional.Name, cmd.Positional.Description)
+	info, err := c.Space(ctx, cmd.Positional.Name, cmd.Positional.Description, cmd.Tags...)
 	if err != nil {
 		return err
 	}
@@ -188,35 +191,11 @@ func writeJSON(v interface{}) error {
 
 func splitComma(s string) []string {
 	var result []string
-	for _, part := range split(s, ',') {
-		part = trim(part)
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
 		if part != "" {
 			result = append(result, part)
 		}
 	}
 	return result
-}
-
-func split(s string, sep byte) []string {
-	var parts []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == sep {
-			parts = append(parts, s[start:i])
-			start = i + 1
-		}
-	}
-	parts = append(parts, s[start:])
-	return parts
-}
-
-func trim(s string) string {
-	start, end := 0, len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
-		end--
-	}
-	return s[start:end]
 }

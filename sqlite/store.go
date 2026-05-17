@@ -3,21 +3,61 @@
 package sqlite
 
 import (
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/chainreactors/ioa"
 	"github.com/chainreactors/ioa/server"
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
+	gormsqlite "github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type SQLiteStore struct {
-	db *sql.DB
+	db *gorm.DB
 }
+
+type nodeModel struct {
+	ID       string `gorm:"column:id;primaryKey"`
+	Name     string `gorm:"column:name;not null"`
+	MetaJSON string `gorm:"column:meta_json;not null"`
+}
+
+func (nodeModel) TableName() string { return "nodes" }
+
+type spaceModel struct {
+	ID                string `gorm:"column:id;primaryKey"`
+	Name              string `gorm:"column:name;uniqueIndex;not null"`
+	TagsJSON          string `gorm:"column:tags_json"`
+	ContentSchemaJSON string `gorm:"column:content_schema_json"`
+}
+
+func (spaceModel) TableName() string { return "spaces" }
+
+type spaceNodeModel struct {
+	SpaceID     string `gorm:"column:space_id;primaryKey"`
+	NodeID      string `gorm:"column:node_id;primaryKey"`
+	Description string `gorm:"column:description;not null"`
+}
+
+func (spaceNodeModel) TableName() string { return "space_nodes" }
+
+type messageModel struct {
+	Seq         uint   `gorm:"column:seq;primaryKey;autoIncrement;index:idx_messages_space_seq,priority:2"`
+	ID          string `gorm:"column:id;uniqueIndex;not null"`
+	SpaceID     string `gorm:"column:space_id;not null;index:idx_messages_space_seq,priority:1"`
+	Sender      string `gorm:"column:sender;not null"`
+	ContentJSON string `gorm:"column:content_json;not null"`
+	RefsJSON    string `gorm:"column:refs_json;not null"`
+}
+
+func (messageModel) TableName() string { return "messages" }
 
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if path == "" {
@@ -26,239 +66,234 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if err := ensureParentDir(path); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite3", path)
+	db, err := gorm.Open(gormsqlite.Open(path), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.SetMaxOpenConns(1)
+	}
 	store := &SQLiteStore{db: db}
 	if err := store.initSchema(); err != nil {
-		_ = db.Close()
+		_ = store.Close()
 		return nil, err
 	}
 	return store, nil
 }
 
 func (s *SQLiteStore) Close() error {
-	return s.db.Close()
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
 }
 
 func (s *SQLiteStore) initSchema() error {
-	_, err := s.db.Exec(`
-CREATE TABLE IF NOT EXISTS nodes (
-	id TEXT PRIMARY KEY,
-	name TEXT NOT NULL,
-	meta_json TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS spaces (
-	id TEXT PRIMARY KEY,
-	name TEXT NOT NULL UNIQUE
-);
-CREATE TABLE IF NOT EXISTS space_nodes (
-	space_id TEXT NOT NULL,
-	node_id TEXT NOT NULL,
-	description TEXT NOT NULL,
-	PRIMARY KEY (space_id, node_id)
-);
-CREATE TABLE IF NOT EXISTS messages (
-	seq INTEGER PRIMARY KEY AUTOINCREMENT,
-	id TEXT NOT NULL UNIQUE,
-	space_id TEXT NOT NULL,
-	sender TEXT NOT NULL,
-	content_json TEXT NOT NULL,
-	refs_json TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_messages_space_seq ON messages (space_id, seq);
-`)
-	if err != nil {
-		return err
-	}
-	_, _ = s.db.Exec(`ALTER TABLE spaces ADD COLUMN content_schema_json TEXT`)
-	return nil
+	return s.db.AutoMigrate(
+		&nodeModel{},
+		&spaceModel{},
+		&spaceNodeModel{},
+		&messageModel{},
+	)
 }
 
 func (s *SQLiteStore) PutNode(node ioa.Node) error {
-	meta, err := json.Marshal(node.Meta)
+	model, err := makeNodeModel(node)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`
-INSERT INTO nodes (id, name, meta_json)
-VALUES (?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-	name = excluded.name,
-	meta_json = excluded.meta_json
-`, node.ID, node.Name, string(meta))
-	return err
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"name", "meta_json"}),
+	}).Create(&model).Error
 }
 
 func (s *SQLiteStore) GetNode(nodeID string) (ioa.Node, bool, error) {
-	row := s.db.QueryRow(`SELECT id, name, meta_json FROM nodes WHERE id = ?`, nodeID)
-	return scanNode(row)
+	var model nodeModel
+	if err := s.db.Where(&nodeModel{ID: nodeID}).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ioa.Node{}, false, nil
+		}
+		return ioa.Node{}, false, err
+	}
+	node, err := model.toNode()
+	return node, err == nil, err
 }
 
 func (s *SQLiteStore) ListNodes() ([]ioa.Node, error) {
-	rows, err := s.db.Query(`SELECT id, name, meta_json FROM nodes ORDER BY name, id`)
-	if err != nil {
+	var models []nodeModel
+	if err := s.db.
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "name"}}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
+		Find(&models).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var result []ioa.Node
-	for rows.Next() {
-		var node ioa.Node
-		var metaJSON string
-		if err := rows.Scan(&node.ID, &node.Name, &metaJSON); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal([]byte(metaJSON), &node.Meta); err != nil {
+	result := make([]ioa.Node, 0, len(models))
+	for _, model := range models {
+		node, err := model.toNode()
+		if err != nil {
 			return nil, err
 		}
 		result = append(result, node)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (s *SQLiteStore) ListSpaces() ([]ioa.Space, error) {
-	rows, err := s.db.Query(`SELECT id, name FROM spaces ORDER BY name`)
-	if err != nil {
+	var models []spaceModel
+	if err := s.db.
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "name"}}).
+		Find(&models).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var result []ioa.Space
-	for rows.Next() {
-		var space ioa.Space
-		if err := rows.Scan(&space.ID, &space.Name); err != nil {
+	result := make([]ioa.Space, 0, len(models))
+	for _, model := range models {
+		space, err := model.toSpace()
+		if err != nil {
 			return nil, err
 		}
 		result = append(result, space)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (s *SQLiteStore) PutSpaceIfAbsent(space ioa.Space) (ioa.Space, error) {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return ioa.Space{}, err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT OR IGNORE INTO spaces (id, name) VALUES (?, ?)`, space.ID, space.Name); err != nil {
-		return ioa.Space{}, err
-	}
-	row := tx.QueryRow(`SELECT id, name FROM spaces WHERE name = ?`, space.Name)
-	existing, ok, err := scanSpace(row)
-	if err != nil {
-		return ioa.Space{}, err
-	}
-	if !ok {
-		return ioa.Space{}, fmt.Errorf("space %q was not created", space.Name)
-	}
-	if err := tx.Commit(); err != nil {
-		return ioa.Space{}, err
-	}
-	return existing, nil
+	var result ioa.Space
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		model, err := makeSpaceModel(space)
+		if err != nil {
+			return err
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "name"}},
+			DoNothing: true,
+		}).Create(&model).Error; err != nil {
+			return err
+		}
+
+		var existing spaceModel
+		if err := tx.Where(&spaceModel{Name: space.Name}).First(&existing).Error; err != nil {
+			return err
+		}
+		existingTags, err := decodeTagsJSON(existing.TagsJSON)
+		if err != nil {
+			return err
+		}
+		mergedTags := ioa.MergeTags(existingTags, space.Tags)
+		if !slices.Equal(existingTags, mergedTags) {
+			encoded, err := encodeTagsJSON(mergedTags)
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(&spaceModel{}).
+				Where(&spaceModel{ID: existing.ID}).
+				Update("tags_json", encoded).Error; err != nil {
+				return err
+			}
+			existing.TagsJSON = encoded
+		}
+		result, err = existing.toSpace()
+		return err
+	})
+	return result, err
 }
 
 func (s *SQLiteStore) GetSpace(spaceID string) (ioa.Space, bool, error) {
-	row := s.db.QueryRow(`SELECT id, name FROM spaces WHERE id = ?`, spaceID)
-	return scanSpace(row)
+	var model spaceModel
+	if err := s.db.Where(&spaceModel{ID: spaceID}).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ioa.Space{}, false, nil
+		}
+		return ioa.Space{}, false, err
+	}
+	space, err := model.toSpace()
+	return space, err == nil, err
 }
 
 func (s *SQLiteStore) SetContentSchema(spaceID string, schema map[string]interface{}) error {
-	if schema == nil {
-		_, err := s.db.Exec(`UPDATE spaces SET content_schema_json = NULL WHERE id = ?`, spaceID)
-		return err
+	encoded := ""
+	if schema != nil {
+		data, err := encodeJSON(schema)
+		if err != nil {
+			return err
+		}
+		encoded = data
 	}
-	data, err := json.Marshal(schema)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`UPDATE spaces SET content_schema_json = ? WHERE id = ?`, string(data), spaceID)
-	return err
+	return s.db.Model(&spaceModel{}).
+		Where(&spaceModel{ID: spaceID}).
+		Update("content_schema_json", encoded).Error
 }
 
 func (s *SQLiteStore) GetContentSchema(spaceID string) (map[string]interface{}, error) {
-	var raw sql.NullString
-	err := s.db.QueryRow(`SELECT content_schema_json FROM spaces WHERE id = ?`, spaceID).Scan(&raw)
-	if err != nil {
-		if err == sql.ErrNoRows {
+	var model spaceModel
+	if err := s.db.Select("content_schema_json").Where(&spaceModel{ID: spaceID}).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	if !raw.Valid {
+	if strings.TrimSpace(model.ContentSchemaJSON) == "" {
 		return nil, nil
 	}
 	var schema map[string]interface{}
-	if err := json.Unmarshal([]byte(raw.String), &schema); err != nil {
+	if err := decodeJSON(model.ContentSchemaJSON, &schema); err != nil {
 		return nil, err
 	}
 	return schema, nil
 }
 
 func (s *SQLiteStore) JoinSpace(spaceID, nodeID, description string) error {
-	_, err := s.db.Exec(`
-INSERT INTO space_nodes (space_id, node_id, description)
-VALUES (?, ?, ?)
-ON CONFLICT(space_id, node_id) DO UPDATE SET
-	description = excluded.description
-`, spaceID, nodeID, description)
-	return err
+	model := spaceNodeModel{SpaceID: spaceID, NodeID: nodeID, Description: description}
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "space_id"}, {Name: "node_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"description"}),
+	}).Create(&model).Error
 }
 
 func (s *SQLiteStore) GetSpaceNodes(spaceID string) ([]ioa.SpaceNodeRecord, error) {
-	rows, err := s.db.Query(`
-SELECT n.id, n.name, n.meta_json, sn.description
-FROM space_nodes sn
-JOIN nodes n ON n.id = sn.node_id
-WHERE sn.space_id = ?
-ORDER BY n.name, n.id
-`, spaceID)
-	if err != nil {
+	var memberships []spaceNodeModel
+	if err := s.db.Where(&spaceNodeModel{SpaceID: spaceID}).Find(&memberships).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var result []ioa.SpaceNodeRecord
-	for rows.Next() {
-		var node ioa.Node
-		var metaJSON string
-		var description string
-		if err := rows.Scan(&node.ID, &node.Name, &metaJSON, &description); err != nil {
+	result := make([]ioa.SpaceNodeRecord, 0, len(memberships))
+	for _, membership := range memberships {
+		node, ok, err := s.GetNode(membership.NodeID)
+		if err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(metaJSON), &node.Meta); err != nil {
-			return nil, err
+		if !ok {
+			continue
 		}
-		result = append(result, ioa.SpaceNodeRecord{Node: node, Description: description})
+		result = append(result, ioa.SpaceNodeRecord{Node: node, Description: membership.Description})
 	}
-	return result, rows.Err()
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Node.Name == result[j].Node.Name {
+			return result[i].Node.ID < result[j].Node.ID
+		}
+		return result[i].Node.Name < result[j].Node.Name
+	})
+	return result, nil
 }
 
 func (s *SQLiteStore) AppendMessage(message ioa.MessageRecord) error {
-	content, err := json.Marshal(message.Content)
+	model, err := makeMessageModel(message)
 	if err != nil {
 		return err
 	}
-	refs, err := json.Marshal(message.Refs)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`
-INSERT INTO messages (id, space_id, sender, content_json, refs_json)
-VALUES (?, ?, ?, ?, ?)
-`, message.ID, message.SpaceID, message.Sender, string(content), string(refs))
-	return err
+	return s.db.Create(&model).Error
 }
 
 func (s *SQLiteStore) GetMessage(spaceID, messageID string) (ioa.MessageRecord, bool, error) {
-	row := s.db.QueryRow(`
-SELECT id, space_id, sender, content_json, refs_json
-FROM messages
-WHERE space_id = ? AND id = ?
-`, spaceID, messageID)
-	return scanMessage(row)
+	var model messageModel
+	if err := s.db.Where(&messageModel{SpaceID: spaceID, ID: messageID}).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ioa.MessageRecord{}, false, nil
+		}
+		return ioa.MessageRecord{}, false, err
+	}
+	message, err := model.toMessage()
+	return message, err == nil, err
 }
 
 func (s *SQLiteStore) GetMessagesForNode(spaceID, nodeID, after string, limit int) ([]ioa.MessageRecord, error) {
@@ -276,9 +311,11 @@ func (s *SQLiteStore) GetMessagesForNode(spaceID, nodeID, after string, limit in
 }
 
 func (s *SQLiteStore) GetMessageCount(spaceID string) (int, error) {
-	var count int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE space_id = ?`, spaceID).Scan(&count)
-	return count, err
+	var count int64
+	if err := s.db.Model(&messageModel{}).Where(&messageModel{SpaceID: spaceID}).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
 
 func (s *SQLiteStore) GetMessages(spaceID, after string, limit int) ([]ioa.MessageRecord, error) {
@@ -311,84 +348,197 @@ func (s *SQLiteStore) GetRelatedMessages(spaceID, messageID, after string, limit
 	return server.RelatedMessages(all, messageID, after, limit), nil
 }
 
-func (s *SQLiteStore) allMessages(spaceID string) ([]ioa.MessageRecord, error) {
-	rows, err := s.db.Query(`
-SELECT id, space_id, sender, content_json, refs_json
-FROM messages
-WHERE space_id = ?
-ORDER BY seq ASC
-`, spaceID)
+func (s *SQLiteStore) GetInboxMessages(nodeID, after string, limit int) ([]ioa.MessageRecord, error) {
+	var memberships []spaceNodeModel
+	if err := s.db.Where(&spaceNodeModel{NodeID: nodeID}).Find(&memberships).Error; err != nil {
+		return nil, err
+	}
+	spaceIDs := make([]string, 0, len(memberships))
+	for _, membership := range memberships {
+		spaceIDs = append(spaceIDs, membership.SpaceID)
+	}
+	sort.Strings(spaceIDs)
+
+	var allMessages []ioa.MessageRecord
+	for _, spaceID := range spaceIDs {
+		messages, err := s.allMessages(spaceID)
+		if err != nil {
+			return nil, err
+		}
+		allMessages = append(allMessages, messages...)
+	}
+	filtered := make([]ioa.MessageRecord, 0, len(allMessages))
+	for _, message := range allMessages {
+		if server.ContainsString(message.Refs.Nodes, nodeID) {
+			filtered = append(filtered, message)
+		}
+	}
+	return server.WindowMessages(filtered, allMessages, after, limit), nil
+}
+
+func (s *SQLiteStore) ListMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, error) {
+	query := s.db.Model(&messageModel{})
+	if filter.SpaceID != "" {
+		query = query.Where(&messageModel{SpaceID: filter.SpaceID})
+	}
+	if filter.MessageID != "" {
+		query = query.Where(&messageModel{ID: filter.MessageID})
+	}
+	if filter.Sender != "" {
+		query = query.Where(&messageModel{Sender: filter.Sender})
+	}
+
+	var models []messageModel
+	if err := query.
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "seq"}}).
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	all, err := decodeMessageModels(models)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	filtered := server.FilterMessages(all, filter)
+	return server.WindowMessages(filtered, all, filter.After, filter.Limit), nil
+}
 
-	var messages []ioa.MessageRecord
-	for rows.Next() {
-		message, err := scanMessageRow(rows)
+func (s *SQLiteStore) allMessages(spaceID string) ([]ioa.MessageRecord, error) {
+	var models []messageModel
+	if err := s.db.Where(&messageModel{SpaceID: spaceID}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "seq"}}).
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	return decodeMessageModels(models)
+}
+
+func makeNodeModel(node ioa.Node) (nodeModel, error) {
+	meta, err := encodeJSON(defaultMap(node.Meta))
+	if err != nil {
+		return nodeModel{}, err
+	}
+	return nodeModel{ID: node.ID, Name: node.Name, MetaJSON: meta}, nil
+}
+
+func (m nodeModel) toNode() (ioa.Node, error) {
+	node := ioa.Node{ID: m.ID, Name: m.Name, Meta: map[string]interface{}{}}
+	if err := decodeJSON(m.MetaJSON, &node.Meta); err != nil {
+		return ioa.Node{}, err
+	}
+	if node.Meta == nil {
+		node.Meta = map[string]interface{}{}
+	}
+	return node, nil
+}
+
+func makeSpaceModel(space ioa.Space) (spaceModel, error) {
+	tags, err := encodeTagsJSON(space.Tags)
+	if err != nil {
+		return spaceModel{}, err
+	}
+	return spaceModel{ID: space.ID, Name: space.Name, TagsJSON: tags}, nil
+}
+
+func (m spaceModel) toSpace() (ioa.Space, error) {
+	tags, err := decodeTagsJSON(m.TagsJSON)
+	if err != nil {
+		return ioa.Space{}, err
+	}
+	return ioa.Space{ID: m.ID, Name: m.Name, Tags: tags}, nil
+}
+
+func makeMessageModel(message ioa.MessageRecord) (messageModel, error) {
+	content, err := encodeJSON(message.Content)
+	if err != nil {
+		return messageModel{}, err
+	}
+	refs, err := encodeJSON(message.Refs)
+	if err != nil {
+		return messageModel{}, err
+	}
+	return messageModel{
+		ID:          message.ID,
+		SpaceID:     message.SpaceID,
+		Sender:      message.Sender,
+		ContentJSON: content,
+		RefsJSON:    refs,
+	}, nil
+}
+
+func (m messageModel) toMessage() (ioa.MessageRecord, error) {
+	message := ioa.MessageRecord{
+		ID:      m.ID,
+		SpaceID: m.SpaceID,
+		Sender:  m.Sender,
+		Content: map[string]interface{}{},
+	}
+	if err := decodeJSON(m.ContentJSON, &message.Content); err != nil {
+		return ioa.MessageRecord{}, err
+	}
+	if err := decodeJSON(m.RefsJSON, &message.Refs); err != nil {
+		return ioa.MessageRecord{}, err
+	}
+	if message.Refs.Messages == nil {
+		message.Refs.Messages = []string{}
+	}
+	if message.Refs.Nodes == nil {
+		message.Refs.Nodes = []string{}
+	}
+	return message, nil
+}
+
+func decodeMessageModels(models []messageModel) ([]ioa.MessageRecord, error) {
+	messages := make([]ioa.MessageRecord, 0, len(models))
+	for _, model := range models {
+		message, err := model.toMessage()
 		if err != nil {
 			return nil, err
 		}
 		messages = append(messages, message)
 	}
-	return messages, rows.Err()
+	return messages, nil
 }
 
-type rowScanner interface {
-	Scan(dest ...interface{}) error
-}
-
-func scanNode(row rowScanner) (ioa.Node, bool, error) {
-	var node ioa.Node
-	var metaJSON string
-	if err := row.Scan(&node.ID, &node.Name, &metaJSON); err != nil {
-		if err == sql.ErrNoRows {
-			return ioa.Node{}, false, nil
-		}
-		return ioa.Node{}, false, err
+func encodeTagsJSON(tags []string) (string, error) {
+	tags = ioa.NormalizeTags(tags)
+	if len(tags) == 0 {
+		return "", nil
 	}
-	if err := json.Unmarshal([]byte(metaJSON), &node.Meta); err != nil {
-		return ioa.Node{}, false, err
-	}
-	return node, true, nil
-}
-
-func scanSpace(row rowScanner) (ioa.Space, bool, error) {
-	var space ioa.Space
-	if err := row.Scan(&space.ID, &space.Name); err != nil {
-		if err == sql.ErrNoRows {
-			return ioa.Space{}, false, nil
-		}
-		return ioa.Space{}, false, err
-	}
-	return space, true, nil
-}
-
-func scanMessage(row rowScanner) (ioa.MessageRecord, bool, error) {
-	message, err := scanMessageRow(row)
+	data, err := encodeJSON(tags)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return ioa.MessageRecord{}, false, nil
-		}
-		return ioa.MessageRecord{}, false, err
+		return "", err
 	}
-	return message, true, nil
+	return data, nil
 }
 
-func scanMessageRow(row rowScanner) (ioa.MessageRecord, error) {
-	var message ioa.MessageRecord
-	var contentJSON string
-	var refsJSON string
-	if err := row.Scan(&message.ID, &message.SpaceID, &message.Sender, &contentJSON, &refsJSON); err != nil {
-		return ioa.MessageRecord{}, err
+func decodeTagsJSON(raw string) ([]string, error) {
+	var tags []string
+	if err := decodeJSON(raw, &tags); err != nil {
+		return nil, err
 	}
-	if err := json.Unmarshal([]byte(contentJSON), &message.Content); err != nil {
-		return ioa.MessageRecord{}, err
+	return ioa.NormalizeTags(tags), nil
+}
+
+func encodeJSON(value any) (string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
 	}
-	if err := json.Unmarshal([]byte(refsJSON), &message.Refs); err != nil {
-		return ioa.MessageRecord{}, err
+	return string(data), nil
+}
+
+func decodeJSON(raw string, value any) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil
 	}
-	return message, nil
+	return json.Unmarshal([]byte(raw), value)
+}
+
+func defaultMap(value map[string]interface{}) map[string]interface{} {
+	if value != nil {
+		return value
+	}
+	return map[string]interface{}{}
 }
 
 func ensureParentDir(path string) error {

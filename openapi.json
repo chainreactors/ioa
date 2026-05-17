@@ -9,6 +9,191 @@
     "host": "127.0.0.1:8765",
     "basePath": "/",
     "paths": {
+        "/graph": {
+            "get": {
+                "description": "Return a normalized, read-only graph projection derived from spaces, nodes, messages, and refs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "Get graph",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID filter",
+                        "name": "space_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message ID context filter",
+                        "name": "message_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Node-connected filter: sender or refs.nodes",
+                        "name": "node_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sender node ID filter",
+                        "name": "sender",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Referenced message ID filter",
+                        "name": "ref_message",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Referenced node ID filter",
+                        "name": "ref_node",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pagination cursor: return messages after this ID",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of messages to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated sections: spaces,nodes,messages,edges",
+                        "name": "include",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Graph projection",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.GraphView"
+                        }
+                    },
+                    "404": {
+                        "description": "Filter target not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid query parameters",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/messages": {
+            "get": {
+                "description": "Return messages across spaces with optional filters. Unlike space-scoped reads, this projection includes space_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "summary": "List messages",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID filter",
+                        "name": "space_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message ID filter",
+                        "name": "message_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Node-connected filter: sender or refs.nodes",
+                        "name": "node_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sender node ID filter",
+                        "name": "sender",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Referenced message ID filter",
+                        "name": "ref_message",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Referenced node ID filter",
+                        "name": "ref_node",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pagination cursor: return messages after this ID",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of messages to return",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of messages",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ioa.MessageRecord"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Filter target not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid query parameters",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/nodes": {
             "get": {
                 "description": "Return all registered nodes",
@@ -230,6 +415,101 @@
                     },
                     "404": {
                         "description": "Space not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceID}/graph": {
+            "get": {
+                "description": "Return a normalized, read-only graph projection scoped to a single space.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "graph"
+                ],
+                "summary": "Get space graph",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message ID context filter",
+                        "name": "message_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Node-connected filter: sender or refs.nodes",
+                        "name": "node_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sender node ID filter",
+                        "name": "sender",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Referenced message ID filter",
+                        "name": "ref_message",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Referenced node ID filter",
+                        "name": "ref_node",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pagination cursor: return messages after this ID",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of messages to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated sections: spaces,nodes,messages,edges",
+                        "name": "include",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Graph projection",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.GraphView"
+                        }
+                    },
+                    "404": {
+                        "description": "Space or filter target not found",
+                        "schema": {
+                            "$ref": "#/definitions/ioa.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid query parameters",
                         "schema": {
                             "$ref": "#/definitions/ioa.ErrorResponse"
                         }
@@ -479,6 +759,69 @@
                 }
             }
         },
+        "ioa.GraphEdge": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                }
+            }
+        },
+        "ioa.GraphStats": {
+            "type": "object",
+            "properties": {
+                "edge_count": {
+                    "type": "integer"
+                },
+                "message_count": {
+                    "type": "integer"
+                },
+                "node_count": {
+                    "type": "integer"
+                },
+                "space_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ioa.GraphView": {
+            "type": "object",
+            "properties": {
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ioa.GraphEdge"
+                    }
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ioa.MessageRecord"
+                    }
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ioa.Node"
+                    }
+                },
+                "spaces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ioa.SpaceInfo"
+                    }
+                },
+                "stats": {
+                    "$ref": "#/definitions/ioa.GraphStats"
+                }
+            }
+        },
         "ioa.Message": {
             "type": "object",
             "properties": {
@@ -497,6 +840,27 @@
                 }
             }
         },
+        "ioa.MessageRecord": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "id": {
+                    "type": "string"
+                },
+                "refs": {
+                    "$ref": "#/definitions/ioa.Ref"
+                },
+                "sender": {
+                    "type": "string"
+                },
+                "space_id": {
+                    "type": "string"
+                }
+            }
+        },
         "ioa.Node": {
             "type": "object",
             "properties": {
@@ -509,6 +873,12 @@
                 },
                 "name": {
                     "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -588,6 +958,12 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/ioa.SpaceNode"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
                     }
                 }
             }

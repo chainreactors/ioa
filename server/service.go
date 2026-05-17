@@ -31,6 +31,11 @@ func (s *Service) Hub() *Hub {
 	return s.hub
 }
 
+func (s *Service) Ready(ctx context.Context) error {
+	_, err := s.ListSpaces(ctx)
+	return err
+}
+
 func (s *Service) ListSpaces(ctx context.Context) ([]ioa.SpaceInfo, error) {
 	spaces, err := s.store.ListSpaces()
 	if err != nil {
@@ -88,7 +93,7 @@ func (s *Service) CreateSpace(ctx context.Context, callerNodeID string, body ioa
 	if strings.TrimSpace(body.Description) == "" {
 		return ioa.SpaceInfo{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "Space description is required")
 	}
-	space, err := s.store.PutSpaceIfAbsent(ioa.Space{ID: ioa.NewID(), Name: body.Name})
+	space, err := s.store.PutSpaceIfAbsent(ioa.Space{ID: ioa.NewID(), Name: body.Name, Tags: body.Tags})
 	if err != nil {
 		return ioa.SpaceInfo{}, err
 	}
@@ -154,6 +159,9 @@ func (s *Service) SendMessage(ctx context.Context, spaceID, callerNodeID string,
 	}
 	message := ioa.ExposeMessage(record)
 	s.hub.Broadcast(spaceID, message)
+	for _, nid := range refs.Nodes {
+		s.hub.BroadcastToNode(nid, message)
+	}
 	return message, nil
 }
 
@@ -163,9 +171,6 @@ func (s *Service) ReadMessages(ctx context.Context, spaceID, callerNodeID string
 	}
 	if opts.Limit < 0 {
 		return nil, ioa.ProtocolError(http.StatusUnprocessableEntity, "limit must be greater than 0")
-	}
-	if opts.Limit == 0 {
-		opts.Limit = 0
 	}
 	if opts.After != "" {
 		if _, ok, err := s.store.GetMessage(spaceID, opts.After); err != nil {
@@ -200,6 +205,34 @@ func (s *Service) ReadMessages(ctx context.Context, spaceID, callerNodeID string
 		return nil, err
 	}
 	return exposeMessages(records), nil
+}
+
+func (s *Service) GetInbox(ctx context.Context, nodeID string, opts ioa.ReadOptions) ([]ioa.MessageRecord, error) {
+	if _, err := s.callerNodeID(nodeID); err != nil {
+		return nil, err
+	}
+	records, err := s.store.GetInboxMessages(nodeID, opts.After, opts.Limit)
+	if err != nil {
+		return nil, err
+	}
+	if records == nil {
+		records = []ioa.MessageRecord{}
+	}
+	return records, nil
+}
+
+func (s *Service) ListMessages(ctx context.Context, filter ioa.MessageFilter) ([]ioa.MessageRecord, error) {
+	if err := s.validateMessageFilter(filter); err != nil {
+		return nil, err
+	}
+	records, err := s.store.ListMessages(filter)
+	if err != nil {
+		return nil, err
+	}
+	if records == nil {
+		records = []ioa.MessageRecord{}
+	}
+	return records, nil
 }
 
 func (s *Service) IsRelated(ctx context.Context, spaceID, rootMessageID, messageID string) (bool, error) {
@@ -254,6 +287,7 @@ func (s *Service) spaceInfo(space ioa.Space) (ioa.SpaceInfo, error) {
 	info := ioa.SpaceInfo{
 		ID:            space.ID,
 		Name:          space.Name,
+		Tags:          space.Tags,
 		Nodes:         make([]ioa.SpaceNode, 0, len(nodes)),
 		MessageCount:  count,
 		ContentSchema: schema,

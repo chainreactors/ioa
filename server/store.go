@@ -23,4 +23,6 @@ type Store interface {
 	GetMessages(spaceID, after string, limit int) ([]ioa.MessageRecord, error)
 	GetStartMessages(spaceID, after string, limit int) ([]ioa.MessageRecord, error)
 	GetRelatedMessages(spaceID, messageID, after string, limit int) ([]ioa.MessageRecord, error)
+	GetInboxMessages(nodeID, after string, limit int) ([]ioa.MessageRecord, error)
+	ListMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, error)
 }

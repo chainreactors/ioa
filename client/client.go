@@ -57,6 +57,34 @@ func (c *Client) ListNodes(ctx context.Context) ([]ioa.Node, error) {
 	return nodes, nil
 }
 
+func (c *Client) ListMessages(ctx context.Context, filter ioa.MessageFilter) ([]ioa.MessageRecord, error) {
+	endpoint := endpointWithQuery("/messages", messageFilterValues(filter))
+	var messages []ioa.MessageRecord
+	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &messages); err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+func (c *Client) GetGraph(ctx context.Context, opts ioa.GraphOptions) (ioa.GraphView, error) {
+	endpoint := endpointWithQuery("/graph", graphOptionsValues(opts))
+	var graph ioa.GraphView
+	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &graph); err != nil {
+		return ioa.GraphView{}, err
+	}
+	return graph, nil
+}
+
+func (c *Client) GetSpaceGraph(ctx context.Context, spaceID string, opts ioa.GraphOptions) (ioa.GraphView, error) {
+	opts.SpaceID = ""
+	endpoint := endpointWithQuery("/spaces/"+url.PathEscape(spaceID)+"/graph", graphOptionsValues(opts))
+	var graph ioa.GraphView
+	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &graph); err != nil {
+		return ioa.GraphView{}, err
+	}
+	return graph, nil
+}
+
 func (c *Client) GetSpaceInfo(ctx context.Context, spaceID string) (ioa.SpaceInfo, error) {
 	var info ioa.SpaceInfo
 	if err := c.do(ctx, http.MethodGet, "/spaces/"+url.PathEscape(spaceID), nil, nil, &info); err != nil {
@@ -86,25 +114,8 @@ func (c *Client) ResolveSpace(ctx context.Context, nameOrID string) (ioa.SpaceIn
 }
 
 func (c *Client) ReadPublic(ctx context.Context, spaceID string, opts ioa.ReadOptions) ([]ioa.Message, error) {
-	values := url.Values{}
-	if opts.MessageID != "" {
-		values.Set("message_id", opts.MessageID)
-	}
-	if opts.After != "" {
-		values.Set("after", opts.After)
-	}
-	if opts.Limit > 0 {
-		values.Set("limit", strconv.Itoa(opts.Limit))
-	}
-	if opts.All {
-		values.Set("all", "true")
-	}
-	endpoint := "/spaces/" + url.PathEscape(spaceID) + "/messages"
-	if encoded := values.Encode(); encoded != "" {
-		endpoint += "?" + encoded
-	}
 	var messages []ioa.Message
-	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &messages); err != nil {
+	if err := c.do(ctx, http.MethodGet, readEndpoint(spaceID, opts), nil, nil, &messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
@@ -119,12 +130,12 @@ func (c *Client) RegisterNode(ctx context.Context, name string, meta map[string]
 	return node, nil
 }
 
-func (c *Client) Space(ctx context.Context, name, description string) (ioa.SpaceInfo, error) {
+func (c *Client) Space(ctx context.Context, name, description string, tags ...string) (ioa.SpaceInfo, error) {
 	if c.nodeID == "" {
 		return ioa.SpaceInfo{}, fmt.Errorf("No node: call register_node() first")
 	}
 	var info ioa.SpaceInfo
-	if err := c.do(ctx, http.MethodPost, "/spaces", map[string]string{"X-Node-ID": c.nodeID}, ioa.SpaceCreate{Name: name, Description: description}, &info); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/spaces", map[string]string{"X-Node-ID": c.nodeID}, ioa.SpaceCreate{Name: name, Description: description, Tags: tags}, &info); err != nil {
 		return ioa.SpaceInfo{}, err
 	}
 	return info, nil
@@ -145,25 +156,8 @@ func (c *Client) Read(ctx context.Context, spaceID string, opts ioa.ReadOptions)
 	if c.nodeID == "" {
 		return nil, fmt.Errorf("No node: call register_node() first")
 	}
-	values := url.Values{}
-	if opts.MessageID != "" {
-		values.Set("message_id", opts.MessageID)
-	}
-	if opts.After != "" {
-		values.Set("after", opts.After)
-	}
-	if opts.Limit > 0 {
-		values.Set("limit", strconv.Itoa(opts.Limit))
-	}
-	if opts.All {
-		values.Set("all", "true")
-	}
-	endpoint := "/spaces/" + url.PathEscape(spaceID) + "/messages"
-	if encoded := values.Encode(); encoded != "" {
-		endpoint += "?" + encoded
-	}
 	var messages []ioa.Message
-	if err := c.do(ctx, http.MethodGet, endpoint, map[string]string{"X-Node-ID": c.nodeID}, nil, &messages); err != nil {
+	if err := c.do(ctx, http.MethodGet, readEndpoint(spaceID, opts), map[string]string{"X-Node-ID": c.nodeID}, nil, &messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
@@ -313,4 +307,65 @@ func (c *Client) do(ctx context.Context, method, endpoint string, headers map[st
 		return nil
 	}
 	return json.Unmarshal(data, out)
+}
+
+func messageFilterValues(filter ioa.MessageFilter) url.Values {
+	values := url.Values{}
+	if filter.SpaceID != "" {
+		values.Set("space_id", filter.SpaceID)
+	}
+	if filter.MessageID != "" {
+		values.Set("message_id", filter.MessageID)
+	}
+	if filter.NodeID != "" {
+		values.Set("node_id", filter.NodeID)
+	}
+	if filter.Sender != "" {
+		values.Set("sender", filter.Sender)
+	}
+	if filter.RefMessage != "" {
+		values.Set("ref_message", filter.RefMessage)
+	}
+	if filter.RefNode != "" {
+		values.Set("ref_node", filter.RefNode)
+	}
+	if filter.After != "" {
+		values.Set("after", filter.After)
+	}
+	if filter.Limit > 0 {
+		values.Set("limit", strconv.Itoa(filter.Limit))
+	}
+	return values
+}
+
+func graphOptionsValues(opts ioa.GraphOptions) url.Values {
+	values := messageFilterValues(opts.MessageFilter)
+	if len(opts.Include) > 0 {
+		values.Set("include", strings.Join(opts.Include, ","))
+	}
+	return values
+}
+
+func readEndpoint(spaceID string, opts ioa.ReadOptions) string {
+	values := url.Values{}
+	if opts.MessageID != "" {
+		values.Set("message_id", opts.MessageID)
+	}
+	if opts.After != "" {
+		values.Set("after", opts.After)
+	}
+	if opts.Limit > 0 {
+		values.Set("limit", strconv.Itoa(opts.Limit))
+	}
+	if opts.All {
+		values.Set("all", "true")
+	}
+	return endpointWithQuery("/spaces/"+url.PathEscape(spaceID)+"/messages", values)
+}
+
+func endpointWithQuery(endpoint string, values url.Values) string {
+	if encoded := values.Encode(); encoded != "" {
+		return endpoint + "?" + encoded
+	}
+	return endpoint
 }

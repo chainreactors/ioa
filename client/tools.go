@@ -12,7 +12,7 @@ import (
 type API interface {
 	NodeID() string
 	RegisterNode(ctx context.Context, name string, meta map[string]interface{}) (ioa.Node, error)
-	Space(ctx context.Context, name, description string) (ioa.SpaceInfo, error)
+	Space(ctx context.Context, name, description string, tags ...string) (ioa.SpaceInfo, error)
 	Send(ctx context.Context, spaceID string, body ioa.SendMessage) (ioa.Message, error)
 	Read(ctx context.Context, spaceID string, opts ioa.ReadOptions) ([]ioa.Message, error)
 }
@@ -105,6 +105,11 @@ func (t *SpaceTool) Definition() ioa.ToolDefinition {
 						"type":        "string",
 						"description": "Your role or intent in this space",
 					},
+					"tags": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Optional labels for ownership, workspace routing, or domain classification",
+					},
 				},
 				"required": []string{"name", "description"},
 			},
@@ -114,8 +119,9 @@ func (t *SpaceTool) Definition() ioa.ToolDefinition {
 
 func (t *SpaceTool) Execute(ctx context.Context, arguments string) (string, error) {
 	var args struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Tags        []string `json:"tags"`
 	}
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -123,7 +129,7 @@ func (t *SpaceTool) Execute(ctx context.Context, arguments string) (string, erro
 	if err := t.base.ensureNode(ctx); err != nil {
 		return "", err
 	}
-	info, err := t.base.client.Space(ctx, args.Name, args.Description)
+	info, err := t.base.client.Space(ctx, args.Name, args.Description, args.Tags...)
 	if err != nil {
 		return "", err
 	}

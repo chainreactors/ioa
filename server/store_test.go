@@ -25,11 +25,19 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 		t.Fatalf("RegisterNode(b) error = %v", err)
 	}
 
-	space, err := service.CreateSpace(ctx, nodeA.ID, ioa.SpaceCreate{Name: "case", Description: "owner"})
+	space, err := service.CreateSpace(ctx, nodeA.ID, ioa.SpaceCreate{
+		Name:        "case",
+		Description: "owner",
+		Tags:        []string{"workspace:aide", "aide", "workspace:aide"},
+	})
 	if err != nil {
 		t.Fatalf("CreateSpace() error = %v", err)
 	}
-	same, err := service.CreateSpace(ctx, nodeB.ID, ioa.SpaceCreate{Name: "case", Description: "reviewer"})
+	same, err := service.CreateSpace(ctx, nodeB.ID, ioa.SpaceCreate{
+		Name:        "case",
+		Description: "reviewer",
+		Tags:        []string{"checkpoint"},
+	})
 	if err != nil {
 		t.Fatalf("CreateSpace(second) error = %v", err)
 	}
@@ -38,6 +46,9 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	}
 	if len(same.Nodes) != 2 {
 		t.Fatalf("space nodes = %#v, want 2 nodes", same.Nodes)
+	}
+	if !reflect.DeepEqual(same.Tags, []string{"workspace:aide", "aide", "checkpoint"}) {
+		t.Fatalf("space tags = %#v, want normalized merged tags", same.Tags)
 	}
 
 	root, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{Content: map[string]interface{}{"text": "root"}})
@@ -231,12 +242,134 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	}
 }
 
+func runProjectionTest(t *testing.T, store Store) {
+	t.Helper()
+	ctx := context.Background()
+	service := NewService(store)
+
+	nodeA, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-a"})
+	if err != nil {
+		t.Fatalf("RegisterNode(a) error = %v", err)
+	}
+	nodeB, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-b"})
+	if err != nil {
+		t.Fatalf("RegisterNode(b) error = %v", err)
+	}
+	nodeC, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-c"})
+	if err != nil {
+		t.Fatalf("RegisterNode(c) error = %v", err)
+	}
+
+	space, err := service.CreateSpace(ctx, nodeA.ID, ioa.SpaceCreate{Name: "case", Description: "owner"})
+	if err != nil {
+		t.Fatalf("CreateSpace(case) error = %v", err)
+	}
+	if _, err := service.CreateSpace(ctx, nodeB.ID, ioa.SpaceCreate{Name: "case", Description: "reviewer"}); err != nil {
+		t.Fatalf("CreateSpace(join case) error = %v", err)
+	}
+	otherSpace, err := service.CreateSpace(ctx, nodeC.ID, ioa.SpaceCreate{Name: "other", Description: "observer"})
+	if err != nil {
+		t.Fatalf("CreateSpace(other) error = %v", err)
+	}
+
+	root, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{Content: map[string]interface{}{"text": "root"}})
+	if err != nil {
+		t.Fatalf("SendMessage(root) error = %v", err)
+	}
+	directed, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"text": "to-b"},
+		Refs:    &ioa.Ref{Nodes: []string{nodeB.ID}},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(directed) error = %v", err)
+	}
+	child, err := service.SendMessage(ctx, space.ID, nodeB.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"text": "child"},
+		Refs:    &ioa.Ref{Messages: []string{root.ID}},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(child) error = %v", err)
+	}
+	other, err := service.SendMessage(ctx, otherSpace.ID, nodeC.ID, ioa.SendMessage{Content: map[string]interface{}{"text": "other"}})
+	if err != nil {
+		t.Fatalf("SendMessage(other) error = %v", err)
+	}
+
+	all, err := service.ListMessages(ctx, ioa.MessageFilter{})
+	if err != nil {
+		t.Fatalf("ListMessages(all) error = %v", err)
+	}
+	if len(all) != 4 || !containsRecordID(all, other.ID) {
+		t.Fatalf("ListMessages(all) = %#v, want four cross-space messages", recordIDs(all))
+	}
+	scoped, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID})
+	if err != nil {
+		t.Fatalf("ListMessages(space) error = %v", err)
+	}
+	if got := recordIDs(scoped); !reflect.DeepEqual(got, []string{root.ID, directed.ID, child.ID}) {
+		t.Fatalf("ListMessages(space) ids = %#v, want root,directed,child", got)
+	}
+	connectedToB, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID, NodeID: nodeB.ID})
+	if err != nil {
+		t.Fatalf("ListMessages(node_id) error = %v", err)
+	}
+	if got := recordIDs(connectedToB); !reflect.DeepEqual(got, []string{directed.ID, child.ID}) {
+		t.Fatalf("ListMessages(node_id) ids = %#v, want directed,child", got)
+	}
+	refMessage, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
+	if err != nil {
+		t.Fatalf("ListMessages(ref_message) error = %v", err)
+	}
+	if got := recordIDs(refMessage); !reflect.DeepEqual(got, []string{child.ID}) {
+		t.Fatalf("ListMessages(ref_message) ids = %#v, want child", got)
+	}
+	refNode, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID, RefNode: nodeB.ID})
+	if err != nil {
+		t.Fatalf("ListMessages(ref_node) error = %v", err)
+	}
+	if got := recordIDs(refNode); !reflect.DeepEqual(got, []string{directed.ID}) {
+		t.Fatalf("ListMessages(ref_node) ids = %#v, want directed", got)
+	}
+
+	graph, err := service.GetSpaceGraph(ctx, space.ID, ioa.GraphOptions{})
+	if err != nil {
+		t.Fatalf("GetSpaceGraph() error = %v", err)
+	}
+	if graph.Stats.SpaceCount != 1 || graph.Stats.MessageCount != 3 {
+		t.Fatalf("graph stats = %#v, want one space and three messages", graph.Stats)
+	}
+	for _, edge := range []ioa.GraphEdge{
+		{Source: "space:" + space.ID, Target: "node:" + nodeA.ID, Kind: "member"},
+		{Source: "space:" + space.ID, Target: "node:" + nodeB.ID, Kind: "member"},
+		{Source: "node:" + nodeA.ID, Target: "message:" + root.ID, Kind: "sender"},
+		{Source: "node:" + nodeB.ID, Target: "message:" + child.ID, Kind: "sender"},
+		{Source: "message:" + child.ID, Target: "message:" + root.ID, Kind: "refs.messages"},
+		{Source: "message:" + directed.ID, Target: "node:" + nodeB.ID, Kind: "refs.nodes"},
+	} {
+		if !hasGraphEdge(graph, edge) {
+			t.Fatalf("graph missing edge %#v in %#v", edge, graph.Edges)
+		}
+	}
+
+	related, err := service.GetGraph(ctx, ioa.GraphOptions{MessageFilter: ioa.MessageFilter{MessageID: root.ID}})
+	if err != nil {
+		t.Fatalf("GetGraph(message_id) error = %v", err)
+	}
+	if got := recordIDs(related.Messages); !reflect.DeepEqual(got, []string{root.ID, child.ID}) {
+		t.Fatalf("related graph ids = %#v, want root,child", got)
+	}
+}
+
 func TestMemoryStoreProtocol(t *testing.T) {
 	runStoreProtocolTest(t, NewMemoryStore())
 }
 
 func TestMemoryStoreContentSchema(t *testing.T) {
 	runContentSchemaTest(t, NewMemoryStore())
+}
+
+func TestMemoryStoreProjections(t *testing.T) {
+	runProjectionTest(t, NewMemoryStore())
 }
 
 func messageIDs(messages []ioa.Message) []string {
@@ -250,6 +383,32 @@ func messageIDs(messages []ioa.Message) []string {
 func containsMessageID(messages []ioa.Message, want string) bool {
 	for _, message := range messages {
 		if message.ID == want {
+			return true
+		}
+	}
+	return false
+}
+
+func recordIDs(messages []ioa.MessageRecord) []string {
+	ids := make([]string, 0, len(messages))
+	for _, message := range messages {
+		ids = append(ids, message.ID)
+	}
+	return ids
+}
+
+func containsRecordID(messages []ioa.MessageRecord, want string) bool {
+	for _, message := range messages {
+		if message.ID == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasGraphEdge(graph ioa.GraphView, want ioa.GraphEdge) bool {
+	for _, edge := range graph.Edges {
+		if edge == want {
 			return true
 		}
 	}
