@@ -45,6 +45,17 @@ func (s *MemoryStore) GetNode(nodeID string) (ioa.Node, bool, error) {
 	return node, ok, nil
 }
 
+func (s *MemoryStore) GetNodeByName(name string) (ioa.Node, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, node := range s.nodes {
+		if node.Name == name {
+			return node, true, nil
+		}
+	}
+	return ioa.Node{}, false, nil
+}
+
 func (s *MemoryStore) ListNodes() ([]ioa.Node, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

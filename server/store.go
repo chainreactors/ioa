@@ -5,6 +5,7 @@ import "github.com/chainreactors/ioa"
 type Store interface {
 	PutNode(node ioa.Node) error
 	GetNode(nodeID string) (ioa.Node, bool, error)
+	GetNodeByName(name string) (ioa.Node, bool, error)
 	ListNodes() ([]ioa.Node, error)
 
 	PutSpaceIfAbsent(space ioa.Space) (ioa.Space, error)

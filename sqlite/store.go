@@ -130,6 +130,18 @@ func (s *SQLiteStore) GetNode(nodeID string) (ioa.Node, bool, error) {
 	return node, err == nil, err
 }
 
+func (s *SQLiteStore) GetNodeByName(name string) (ioa.Node, bool, error) {
+	var model nodeModel
+	if err := s.db.Where("name = ?", name).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ioa.Node{}, false, nil
+		}
+		return ioa.Node{}, false, err
+	}
+	node, err := model.toNode()
+	return node, err == nil, err
+}
+
 func (s *SQLiteStore) ListNodes() ([]ioa.Node, error) {
 	var models []nodeModel
 	if err := s.db.

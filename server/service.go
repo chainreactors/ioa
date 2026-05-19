@@ -259,9 +259,18 @@ func (s *Service) AuthRegister(ctx context.Context, body ioa.AuthRegister) (ioa.
 	if body.AccessKey != s.accessKey {
 		return ioa.AuthResponse{}, ioa.ProtocolError(http.StatusForbidden, "invalid access key")
 	}
-	node, err := s.RegisterNode(ctx, ioa.NodeCreate{Name: body.Name, Meta: body.Meta})
+	if strings.TrimSpace(body.Name) == "" {
+		return ioa.AuthResponse{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "name is required")
+	}
+	node, ok, err := s.store.GetNodeByName(body.Name)
 	if err != nil {
 		return ioa.AuthResponse{}, err
+	}
+	if !ok {
+		node, err = s.RegisterNode(ctx, ioa.NodeCreate{Name: body.Name, Meta: body.Meta})
+		if err != nil {
+			return ioa.AuthResponse{}, err
+		}
 	}
 	token := ioa.NewToken()
 	if err := s.store.PutToken(ioa.TokenHash(token), node.ID); err != nil {
