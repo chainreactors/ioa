@@ -74,6 +74,44 @@ func TestHandlerHealthReportsStoreFailure(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareScopesAccessKeyToBootstrap(t *testing.T) {
+	const accessKey = "test-access-key"
+	service := NewService(NewMemoryStore(), accessKey)
+	srv := httptest.NewServer(AuthMiddleware(service)(NewHandler(service)))
+	defer srv.Close()
+
+	getStatus(t, srv.URL+"/health", nil, http.StatusOK)
+	getStatus(t, srv.URL+"/spaces", nil, http.StatusUnauthorized)
+	getStatus(t, srv.URL+"/spaces", map[string]string{"X-Access-Key": accessKey}, http.StatusUnauthorized)
+
+	auth := postJSONAuth(t, srv.URL+"/auth/register", map[string]interface{}{
+		"name":       "agent",
+		"access_key": accessKey,
+		"meta":       map[string]interface{}{"role": "test"},
+	}, http.StatusCreated)
+	tokenHeaders := map[string]string{"Authorization": "Bearer " + auth.Token}
+	getStatus(t, srv.URL+"/spaces", tokenHeaders, http.StatusOK)
+
+	postJSONStatusHeaders(t, srv.URL+"/spaces", tokenHeaders, map[string]interface{}{
+		"name": "case", "description": "token-only",
+	}, http.StatusUnauthorized)
+
+	space := postJSONSpaceInfoHeaders(t, srv.URL+"/spaces", map[string]string{
+		"X-Access-Key": accessKey,
+		"X-Node-ID":    auth.ID,
+	}, map[string]interface{}{"name": "case", "description": "bootstrap"}, http.StatusOK)
+	if space.Name != "case" {
+		t.Fatalf("space name = %q, want case", space.Name)
+	}
+
+	msg := postJSONMessageHeaders(t, srv.URL+"/spaces/"+space.ID+"/messages", tokenHeaders, map[string]interface{}{
+		"content": map[string]interface{}{"text": "hello"},
+	}, http.StatusCreated)
+	if msg.Sender != auth.ID {
+		t.Fatalf("message sender = %q, want token node %q", msg.Sender, auth.ID)
+	}
+}
+
 type failingListSpacesStore struct {
 	*MemoryStore
 	err error
@@ -202,6 +240,15 @@ func TestHandlerMessagesAndGraph(t *testing.T) {
 
 func doPost(t *testing.T, url, nodeID string, body interface{}, wantStatus int) []byte {
 	t.Helper()
+	headers := map[string]string{}
+	if nodeID != "" {
+		headers["X-Node-ID"] = nodeID
+	}
+	return doPostHeaders(t, url, headers, body, wantStatus)
+}
+
+func doPostHeaders(t *testing.T, url string, headers map[string]string, body interface{}, wantStatus int) []byte {
+	t.Helper()
 	data, err := json.Marshal(body)
 	if err != nil {
 		t.Fatal(err)
@@ -211,8 +258,8 @@ func doPost(t *testing.T, url, nodeID string, body interface{}, wantStatus int) 
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if nodeID != "" {
-		req.Header.Set("X-Node-ID", nodeID)
+	for key, value := range headers {
+		req.Header.Set(key, value)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -228,7 +275,19 @@ func doPost(t *testing.T, url, nodeID string, body interface{}, wantStatus int) 
 
 func doGet(t *testing.T, url string, wantStatus int) []byte {
 	t.Helper()
-	resp, err := http.Get(url)
+	return getStatus(t, url, nil, wantStatus)
+}
+
+func getStatus(t *testing.T, url string, headers map[string]string, wantStatus int) []byte {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,6 +297,16 @@ func doGet(t *testing.T, url string, wantStatus int) []byte {
 		t.Fatalf("status = %d, want %d, body=%s", resp.StatusCode, wantStatus, strings.TrimSpace(string(data)))
 	}
 	return data
+}
+
+func postJSONAuth(t *testing.T, url string, body interface{}, wantStatus int) ioa.AuthResponse {
+	t.Helper()
+	data := doPostHeaders(t, url, nil, body, wantStatus)
+	var out ioa.AuthResponse
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 func postJSONNode(t *testing.T, url, nodeID string, body interface{}, wantStatus int) ioa.Node {
@@ -260,6 +329,16 @@ func postJSONSpaceInfo(t *testing.T, url, nodeID string, body interface{}, wantS
 	return out
 }
 
+func postJSONSpaceInfoHeaders(t *testing.T, url string, headers map[string]string, body interface{}, wantStatus int) ioa.SpaceInfo {
+	t.Helper()
+	data := doPostHeaders(t, url, headers, body, wantStatus)
+	var out ioa.SpaceInfo
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func postJSONMessage(t *testing.T, url, nodeID string, body interface{}, wantStatus int) ioa.Message {
 	t.Helper()
 	data := doPost(t, url, nodeID, body, wantStatus)
@@ -270,9 +349,24 @@ func postJSONMessage(t *testing.T, url, nodeID string, body interface{}, wantSta
 	return out
 }
 
+func postJSONMessageHeaders(t *testing.T, url string, headers map[string]string, body interface{}, wantStatus int) ioa.Message {
+	t.Helper()
+	data := doPostHeaders(t, url, headers, body, wantStatus)
+	var out ioa.Message
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func postJSONStatus(t *testing.T, url, nodeID string, body interface{}, wantStatus int) {
 	t.Helper()
 	doPost(t, url, nodeID, body, wantStatus)
+}
+
+func postJSONStatusHeaders(t *testing.T, url string, headers map[string]string, body interface{}, wantStatus int) {
+	t.Helper()
+	doPostHeaders(t, url, headers, body, wantStatus)
 }
 
 func getJSONMessageRecords(t *testing.T, url string, wantStatus int) []ioa.MessageRecord {

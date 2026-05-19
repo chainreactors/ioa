@@ -14,31 +14,71 @@ func AuthMiddleware(service *Service) func(http.Handler) http.Handler {
 				return
 			}
 
-			if ak := r.Header.Get("X-Access-Key"); ak != "" {
-				if ak == service.AccessKey() {
-					next.ServeHTTP(w, r)
+			if path == "/spaces" && r.Method == http.MethodPost {
+				if !authorizeAccessKey(w, r, service) {
 					return
 				}
-				writeError(w, http.StatusForbidden, "invalid access key")
+				next.ServeHTTP(w, r)
 				return
 			}
 
-			auth := r.Header.Get("Authorization")
-			if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
-				writeError(w, http.StatusUnauthorized, "authorization required: provide token or access key")
+			if !authorizeToken(w, r, service) {
 				return
-			}
-			token := strings.TrimPrefix(auth, "Bearer ")
-			node, err := service.ResolveToken(token)
-			if err != nil {
-				writeServiceError(w, err)
-				return
-			}
-
-			if r.Header.Get("X-Node-ID") == "" {
-				r.Header.Set("X-Node-ID", node.ID)
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func authorizeAccessKey(w http.ResponseWriter, r *http.Request, service *Service) bool {
+	ak := r.Header.Get("X-Access-Key")
+	if ak == "" {
+		writeError(w, http.StatusUnauthorized, "access key required")
+		return false
+	}
+	if ak != service.AccessKey() {
+		writeError(w, http.StatusForbidden, "invalid access key")
+		return false
+	}
+
+	// If the caller also supplied a bearer token, bind the caller node for
+	// handlers that need a sender/member identity, while keeping access-key
+	// authorization scoped to this bootstrap endpoint.
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		return true
+	}
+	if !strings.HasPrefix(auth, "Bearer ") {
+		writeError(w, http.StatusUnauthorized, "invalid authorization header")
+		return false
+	}
+	token := strings.TrimPrefix(auth, "Bearer ")
+	node, err := service.ResolveToken(token)
+	if err != nil {
+		writeServiceError(w, err)
+		return false
+	}
+	if r.Header.Get("X-Node-ID") == "" {
+		r.Header.Set("X-Node-ID", node.ID)
+	}
+	return true
+}
+
+func authorizeToken(w http.ResponseWriter, r *http.Request, service *Service) bool {
+	auth := r.Header.Get("Authorization")
+	if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
+		writeError(w, http.StatusUnauthorized, "authorization token required")
+		return false
+	}
+	token := strings.TrimPrefix(auth, "Bearer ")
+	node, err := service.ResolveToken(token)
+	if err != nil {
+		writeServiceError(w, err)
+		return false
+	}
+
+	if r.Header.Get("X-Node-ID") == "" {
+		r.Header.Set("X-Node-ID", node.ID)
+	}
+	return true
 }
