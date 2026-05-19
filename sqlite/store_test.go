@@ -20,7 +20,7 @@ func TestSQLiteStoreProtocol(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	ctx := context.Background()
-	service := server.NewService(store)
+	service := server.NewService(store, "")
 
 	nodes, err := service.ListNodes(ctx)
 	if err != nil {

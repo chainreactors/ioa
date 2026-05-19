@@ -20,6 +20,7 @@ type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 	nodeID     string
+	token      string
 }
 
 func NewClient(baseURL string, nodeID string) (*Client, error) {
@@ -37,8 +38,28 @@ func NewClient(baseURL string, nodeID string) (*Client, error) {
 	}, nil
 }
 
+func NewClientWithToken(baseURL string, token string) (*Client, error) {
+	c, err := NewClient(baseURL, "")
+	if err != nil {
+		return nil, err
+	}
+	c.token = token
+	return c, nil
+}
+
 func (c *Client) NodeID() string {
 	return c.nodeID
+}
+
+func (c *Client) Register(ctx context.Context, accessKey, name string, meta map[string]interface{}) (ioa.AuthResponse, error) {
+	body := ioa.AuthRegister{Name: name, AccessKey: accessKey, Meta: meta}
+	var resp ioa.AuthResponse
+	if err := c.do(ctx, http.MethodPost, "/auth/register", nil, body, &resp); err != nil {
+		return ioa.AuthResponse{}, err
+	}
+	c.token = resp.Token
+	c.nodeID = resp.ID
+	return resp, nil
 }
 
 func (c *Client) ListSpaces(ctx context.Context) ([]ioa.SpaceInfo, error) {
@@ -277,6 +298,9 @@ func (c *Client) do(ctx context.Context, method, endpoint string, headers map[st
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	for key, value := range headers {
 		req.Header.Set(key, value)

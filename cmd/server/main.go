@@ -32,7 +32,9 @@ type options struct {
 	Nodes    nodesCmd    `command:"nodes" description:"List nodes"`
 }
 
-type serveCmd struct{}
+type serveCmd struct {
+	AccessKey string `long:"access-key" env:"IOA_ACCESS_KEY" description:"Access key for client registration (enables auth when set)"`
+}
 
 type spacesCmd struct{}
 
@@ -158,8 +160,13 @@ func runServe(opts options, logger *stdLogger) error {
 
 	logger.Importantf("ioa_server store=%s", storeDescription)
 
+	if opts.Serve.AccessKey != "" {
+		logger.Importantf("ioa_server auth=enabled")
+	}
+
 	return server.RunServer(ctx, server.ServerOptions{
 		URL:        opts.URL,
+		AccessKey:  opts.Serve.AccessKey,
 		Store:      store,
 		Middleware: withOptionalMiddleware,
 		Logger:     logger,

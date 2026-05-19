@@ -30,6 +30,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch segments[0] {
 	case "health", "ready":
 		h.health(w, r, segments)
+	case "auth":
+		h.serveAuth(w, r, segments)
 	case "nodes":
 		h.serveNodes(w, r, segments)
 	case "messages":
@@ -67,6 +69,27 @@ func (h *Handler) health(w http.ResponseWriter, r *http.Request, segments []stri
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) serveAuth(w http.ResponseWriter, r *http.Request, segments []string) {
+	if len(segments) == 2 && segments[1] == "register" && r.Method == http.MethodPost {
+		h.authRegister(w, r)
+		return
+	}
+	writeError(w, http.StatusNotFound, "not found")
+}
+
+func (h *Handler) authRegister(w http.ResponseWriter, r *http.Request) {
+	var body ioa.AuthRegister
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	resp, err := h.service.AuthRegister(r.Context(), body)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (h *Handler) serveNodes(w http.ResponseWriter, r *http.Request, segments []string) {

@@ -11,7 +11,7 @@ import (
 func runStoreProtocolTest(t *testing.T, store Store) {
 	t.Helper()
 	ctx := context.Background()
-	service := NewService(store)
+	service := NewService(store, "")
 
 	nodeA, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-a"})
 	if err != nil {
@@ -146,7 +146,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 func runContentSchemaTest(t *testing.T, store Store) {
 	t.Helper()
 	ctx := context.Background()
-	service := NewService(store)
+	service := NewService(store, "")
 
 	node, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent"})
 	if err != nil {
@@ -245,7 +245,7 @@ func runContentSchemaTest(t *testing.T, store Store) {
 func runProjectionTest(t *testing.T, store Store) {
 	t.Helper()
 	ctx := context.Background()
-	service := NewService(store)
+	service := NewService(store, "")
 
 	nodeA, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-a"})
 	if err != nil {

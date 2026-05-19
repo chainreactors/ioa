@@ -16,6 +16,7 @@ type MemoryStore struct {
 	messages     map[string][]ioa.MessageRecord
 	spaceNodes   map[string]map[string]string
 	spaceSchemas map[string]map[string]interface{}
+	tokens       map[string]string // sha256(token) → nodeID
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -26,6 +27,7 @@ func NewMemoryStore() *MemoryStore {
 		messages:     make(map[string][]ioa.MessageRecord),
 		spaceNodes:   make(map[string]map[string]string),
 		spaceSchemas: make(map[string]map[string]interface{}),
+		tokens:       make(map[string]string),
 	}
 }
 
@@ -246,6 +248,24 @@ func (s *MemoryStore) messagesInScope(spaceID string) []ioa.MessageRecord {
 		messages = append(messages, cloneMessages(s.messages[id])...)
 	}
 	return messages
+}
+
+func (s *MemoryStore) PutToken(tokenHash string, nodeID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tokens[tokenHash] = nodeID
+	return nil
+}
+
+func (s *MemoryStore) GetNodeByTokenHash(tokenHash string) (ioa.Node, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	nodeID, ok := s.tokens[tokenHash]
+	if !ok {
+		return ioa.Node{}, false, nil
+	}
+	node, ok := s.nodes[nodeID]
+	return node, ok, nil
 }
 
 func cloneMessages(messages []ioa.MessageRecord) []ioa.MessageRecord {

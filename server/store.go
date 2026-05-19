@@ -25,4 +25,7 @@ type Store interface {
 	GetRelatedMessages(spaceID, messageID, after string, limit int) ([]ioa.MessageRecord, error)
 	GetInboxMessages(nodeID, after string, limit int) ([]ioa.MessageRecord, error)
 	ListMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, error)
+
+	PutToken(tokenHash string, nodeID string) error
+	GetNodeByTokenHash(tokenHash string) (ioa.Node, bool, error)
 }

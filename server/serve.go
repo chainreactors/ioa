@@ -14,6 +14,7 @@ import (
 type ServerOptions struct {
 	URL        string
 	DB         string
+	AccessKey  string
 	Store      Store
 	Middleware func(http.Handler, *Service) http.Handler
 	Logger     ioa.Logger
@@ -38,8 +39,12 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 	if err != nil {
 		return err
 	}
-	service := NewService(store)
+	if opts.AccessKey == "" {
+		return fmt.Errorf("--access-key is required")
+	}
+	service := NewService(store, opts.AccessKey)
 	var handler http.Handler = NewHandler(service)
+	handler = AuthMiddleware(service)(handler)
 	if opts.Middleware != nil {
 		handler = opts.Middleware(handler, service)
 	}

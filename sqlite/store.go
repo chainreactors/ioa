@@ -53,11 +53,19 @@ type messageModel struct {
 	ID          string `gorm:"column:id;uniqueIndex;not null"`
 	SpaceID     string `gorm:"column:space_id;not null;index:idx_messages_space_seq,priority:1"`
 	Sender      string `gorm:"column:sender;not null"`
+	CreatedAt   string `gorm:"column:created_at"`
 	ContentJSON string `gorm:"column:content_json;not null"`
 	RefsJSON    string `gorm:"column:refs_json;not null"`
 }
 
 func (messageModel) TableName() string { return "messages" }
+
+type tokenModel struct {
+	Hash   string `gorm:"column:hash;primaryKey"`
+	NodeID string `gorm:"column:node_id;not null"`
+}
+
+func (tokenModel) TableName() string { return "tokens" }
 
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if path == "" {
@@ -95,6 +103,7 @@ func (s *SQLiteStore) initSchema() error {
 		&spaceModel{},
 		&spaceNodeModel{},
 		&messageModel{},
+		&tokenModel{},
 	)
 }
 
@@ -402,6 +411,24 @@ func (s *SQLiteStore) ListMessages(filter ioa.MessageFilter) ([]ioa.MessageRecor
 	return server.WindowMessages(filtered, all, filter.After, filter.Limit), nil
 }
 
+func (s *SQLiteStore) PutToken(tokenHash string, nodeID string) error {
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "hash"}},
+		DoUpdates: clause.AssignmentColumns([]string{"node_id"}),
+	}).Create(&tokenModel{Hash: tokenHash, NodeID: nodeID}).Error
+}
+
+func (s *SQLiteStore) GetNodeByTokenHash(tokenHash string) (ioa.Node, bool, error) {
+	var model tokenModel
+	if err := s.db.Where(&tokenModel{Hash: tokenHash}).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ioa.Node{}, false, nil
+		}
+		return ioa.Node{}, false, err
+	}
+	return s.GetNode(model.NodeID)
+}
+
 func (s *SQLiteStore) allMessages(spaceID string) ([]ioa.MessageRecord, error) {
 	var models []messageModel
 	if err := s.db.Where(&messageModel{SpaceID: spaceID}).
@@ -460,6 +487,7 @@ func makeMessageModel(message ioa.MessageRecord) (messageModel, error) {
 		ID:          message.ID,
 		SpaceID:     message.SpaceID,
 		Sender:      message.Sender,
+		CreatedAt:   message.CreatedAt,
 		ContentJSON: content,
 		RefsJSON:    refs,
 	}, nil
@@ -467,10 +495,11 @@ func makeMessageModel(message ioa.MessageRecord) (messageModel, error) {
 
 func (m messageModel) toMessage() (ioa.MessageRecord, error) {
 	message := ioa.MessageRecord{
-		ID:      m.ID,
-		SpaceID: m.SpaceID,
-		Sender:  m.Sender,
-		Content: map[string]interface{}{},
+		ID:        m.ID,
+		SpaceID:   m.SpaceID,
+		Sender:    m.Sender,
+		CreatedAt: m.CreatedAt,
+		Content:   map[string]interface{}{},
 	}
 	if err := decodeJSON(m.ContentJSON, &message.Content); err != nil {
 		return ioa.MessageRecord{}, err

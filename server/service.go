@@ -6,21 +6,27 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/chainreactors/ioa"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 type Service struct {
-	store Store
-	hub   *Hub
+	store     Store
+	hub       *Hub
+	accessKey string
 }
 
-func NewService(store Store) *Service {
+func NewService(store Store, accessKey string) *Service {
 	if store == nil {
 		store = NewMemoryStore()
 	}
-	return &Service{store: store, hub: NewHub()}
+	return &Service{store: store, hub: NewHub(), accessKey: accessKey}
+}
+
+func (s *Service) AccessKey() string {
+	return s.accessKey
 }
 
 func (s *Service) Store() Store {
@@ -148,11 +154,12 @@ func (s *Service) SendMessage(ctx context.Context, spaceID, callerNodeID string,
 		return ioa.Message{}, err
 	}
 	record := ioa.MessageRecord{
-		ID:      ioa.NewID(),
-		SpaceID: spaceID,
-		Sender:  sender,
-		Content: body.Content,
-		Refs:    refs,
+		ID:        ioa.NewID(),
+		SpaceID:   spaceID,
+		Sender:    sender,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Content:   body.Content,
+		Refs:      refs,
 	}
 	if err := s.store.AppendMessage(record); err != nil {
 		return ioa.Message{}, err
@@ -246,6 +253,33 @@ func (s *Service) IsRelated(ctx context.Context, spaceID, rootMessageID, message
 		}
 	}
 	return false, nil
+}
+
+func (s *Service) AuthRegister(ctx context.Context, body ioa.AuthRegister) (ioa.AuthResponse, error) {
+	if body.AccessKey != s.accessKey {
+		return ioa.AuthResponse{}, ioa.ProtocolError(http.StatusForbidden, "invalid access key")
+	}
+	node, err := s.RegisterNode(ctx, ioa.NodeCreate{Name: body.Name, Meta: body.Meta})
+	if err != nil {
+		return ioa.AuthResponse{}, err
+	}
+	token := ioa.NewToken()
+	if err := s.store.PutToken(ioa.TokenHash(token), node.ID); err != nil {
+		return ioa.AuthResponse{}, err
+	}
+	return ioa.AuthResponse{ID: node.ID, Name: node.Name, Token: token}, nil
+}
+
+func (s *Service) ResolveToken(token string) (ioa.Node, error) {
+	hash := ioa.TokenHash(token)
+	node, ok, err := s.store.GetNodeByTokenHash(hash)
+	if err != nil {
+		return ioa.Node{}, err
+	}
+	if !ok {
+		return ioa.Node{}, ioa.ProtocolError(http.StatusUnauthorized, "invalid token")
+	}
+	return node, nil
 }
 
 func (s *Service) callerNodeID(nodeID string) (string, error) {

@@ -12,7 +12,7 @@ import (
 )
 
 func TestClientAndTools(t *testing.T) {
-	httpServer := httptest.NewServer(server.NewHandler(server.NewService(server.NewMemoryStore())))
+	httpServer := httptest.NewServer(server.NewHandler(server.NewService(server.NewMemoryStore(), "")))
 	defer httpServer.Close()
 
 	client, err := NewClient(httpServer.URL, "")
@@ -65,7 +65,7 @@ func TestClientAndTools(t *testing.T) {
 }
 
 func TestClientProjections(t *testing.T) {
-	httpServer := httptest.NewServer(server.NewHandler(server.NewService(server.NewMemoryStore())))
+	httpServer := httptest.NewServer(server.NewHandler(server.NewService(server.NewMemoryStore(), "")))
 	defer httpServer.Close()
 
 	ctx := context.Background()
@@ -134,7 +134,7 @@ func TestClientProjections(t *testing.T) {
 }
 
 func TestSendToolRejectsMissingContent(t *testing.T) {
-	httpServer := httptest.NewServer(server.NewHandler(server.NewService(server.NewMemoryStore())))
+	httpServer := httptest.NewServer(server.NewHandler(server.NewService(server.NewMemoryStore(), "")))
 	defer httpServer.Close()
 
 	client, err := NewClient(httpServer.URL, "")

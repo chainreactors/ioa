@@ -13,12 +13,18 @@ import (
 )
 
 type options struct {
-	URL      string `long:"url" description:"IOA server URL" default:"http://127.0.0.1:8765"`
-	NodeName string `long:"name" description:"Node name for auto-registration" default:"ioa-client"`
+	URL      string `long:"url" env:"IOA_URL" description:"IOA server URL" default:"http://127.0.0.1:8765"`
+	Token    string `long:"token" env:"IOA_TOKEN" description:"Auth token for authenticated requests"`
+	NodeName string `long:"name" env:"IOA_NODE_NAME" description:"Node name for auto-registration" default:"ioa-client"`
 
-	Space spaceCmd `command:"space" description:"Create or join a space"`
-	Send  sendCmd  `command:"send" description:"Send a message to a space"`
-	Read  readCmd  `command:"read" description:"Read messages from a space"`
+	Register registerCmd `command:"register" description:"Register a new node and obtain a token"`
+	Space    spaceCmd    `command:"space" description:"Create or join a space"`
+	Send     sendCmd     `command:"send" description:"Send a message to a space"`
+	Read     readCmd     `command:"read" description:"Read messages from a space"`
+}
+
+type registerCmd struct {
+	AccessKey string `long:"access-key" env:"IOA_ACCESS_KEY" description:"Server access key" required:"yes"`
 }
 
 type spaceCmd struct {
@@ -54,14 +60,21 @@ func main() {
 ioa - IOA (Internet of Agent) client
 
 Commands:
+  register --access-key KEY    Register a new node (returns token)
   space <name> <description>   Create or join a space
   send  --space ID -c JSON     Send a message
   read  --space ID             Read messages
 
+Environment:
+  IOA_URL          Server URL (default http://127.0.0.1:8765)
+  IOA_TOKEN        Auth token for authenticated requests
+  IOA_NODE_NAME    Node name (default ioa-client)
+  IOA_ACCESS_KEY   Access key for registration
+
 Examples:
-  ioa space my-task "code reviewer"
-  ioa send -s SPACE_ID -c '{"type":"task","task":"scan 192.168.1.0/24"}'
-  ioa read -s SPACE_ID --all`
+  ioa register --access-key mykey --name alice
+  ioa --token TOKEN space my-task "code reviewer"
+  IOA_TOKEN=TOKEN ioa send -s SPACE_ID -c '{"text":"hello"}'`
 
 	if _, err := parser.Parse(); err != nil {
 		if flagsErr, ok := err.(*goflags.Error); ok && flagsErr.Type == goflags.ErrHelp {
@@ -72,18 +85,27 @@ Examples:
 		os.Exit(1)
 	}
 
-	c, err := client.NewClient(opts.URL, "")
+	active := parser.Active
+	if active == nil {
+		fmt.Fprintln(os.Stderr, "error: missing subcommand: use register, space, send, or read")
+		os.Exit(1)
+	}
+
+	var (
+		c   *client.Client
+		err error
+	)
+	if opts.Token != "" {
+		c, err = client.NewClientWithToken(opts.URL, opts.Token)
+	} else {
+		c, err = client.NewClient(opts.URL, "")
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		os.Exit(1)
 	}
 
 	ctx := context.Background()
-	active := parser.Active
-	if active == nil {
-		fmt.Fprintln(os.Stderr, "error: missing subcommand: use space, send, or read")
-		os.Exit(1)
-	}
 
 	nodeName := opts.NodeName
 	if nodeName == "" {
@@ -91,6 +113,8 @@ Examples:
 	}
 
 	switch active.Name {
+	case "register":
+		err = runRegister(ctx, c, nodeName, opts.Register)
 	case "space":
 		err = runSpace(ctx, c, nodeName, opts.Space)
 	case "send":
@@ -102,6 +126,14 @@ Examples:
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		os.Exit(1)
 	}
+}
+
+func runRegister(ctx context.Context, c *client.Client, nodeName string, cmd registerCmd) error {
+	resp, err := c.Register(ctx, cmd.AccessKey, nodeName, map[string]interface{}{})
+	if err != nil {
+		return err
+	}
+	return writeJSON(resp)
 }
 
 func ensureNode(ctx context.Context, c *client.Client, name string) error {

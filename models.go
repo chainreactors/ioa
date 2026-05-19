@@ -16,18 +16,20 @@ type Node struct {
 }
 
 type Message struct {
-	ID      string                 `json:"id"`
-	Sender  string                 `json:"sender"`
-	Content map[string]interface{} `json:"content"`
-	Refs    Ref                    `json:"refs"`
+	ID        string                 `json:"id"`
+	Sender    string                 `json:"sender"`
+	CreatedAt string                 `json:"created_at"`
+	Content   map[string]interface{} `json:"content"`
+	Refs      Ref                    `json:"refs"`
 }
 
 type MessageRecord struct {
-	ID      string                 `json:"id"`
-	SpaceID string                 `json:"space_id"`
-	Sender  string                 `json:"sender"`
-	Content map[string]interface{} `json:"content"`
-	Refs    Ref                    `json:"refs"`
+	ID        string                 `json:"id"`
+	SpaceID   string                 `json:"space_id"`
+	Sender    string                 `json:"sender"`
+	CreatedAt string                 `json:"created_at"`
+	Content   map[string]interface{} `json:"content"`
+	Refs      Ref                    `json:"refs"`
 }
 
 type MessageFilter struct {
@@ -112,6 +114,18 @@ type ReadOptions struct {
 	All       bool
 }
 
+type AuthRegister struct {
+	Name      string                 `json:"name"`
+	AccessKey string                 `json:"access_key"`
+	Meta      map[string]interface{} `json:"meta"`
+}
+
+type AuthResponse struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Token string `json:"token"`
+}
+
 type ErrorResponse struct {
 	Detail string `json:"detail"`
 }
@@ -123,10 +137,11 @@ type SpaceNodeRecord struct {
 
 func ExposeMessage(record MessageRecord) Message {
 	return Message{
-		ID:      record.ID,
-		Sender:  record.Sender,
-		Content: record.Content,
-		Refs:    record.Refs,
+		ID:        record.ID,
+		Sender:    record.Sender,
+		CreatedAt: record.CreatedAt,
+		Content:   record.Content,
+		Refs:      record.Refs,
 	}
 }
 

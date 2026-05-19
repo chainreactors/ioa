@@ -17,7 +17,7 @@ import (
 )
 
 func TestHandlerHealth(t *testing.T) {
-	srv := httptest.NewServer(NewHandler(NewService(NewMemoryStore())))
+	srv := httptest.NewServer(NewHandler(NewService(NewMemoryStore(), "")))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/health")
@@ -54,7 +54,7 @@ func TestHandlerHealthReportsStoreFailure(t *testing.T) {
 	srv := httptest.NewServer(NewHandler(NewService(failingListSpacesStore{
 		MemoryStore: NewMemoryStore(),
 		err:         errors.New("store unavailable"),
-	})))
+	}, "")))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/health")
@@ -84,7 +84,7 @@ func (s failingListSpacesStore) ListSpaces() ([]ioa.Space, error) {
 }
 
 func TestHandlerHTTPAndSSE(t *testing.T) {
-	srv := httptest.NewServer(NewHandler(NewService(NewMemoryStore())))
+	srv := httptest.NewServer(NewHandler(NewService(NewMemoryStore(), "")))
 	defer srv.Close()
 
 	node := postJSONNode(t, srv.URL+"/nodes", "", map[string]interface{}{"name": "agent", "meta": map[string]interface{}{"role": "test"}}, http.StatusCreated)
@@ -139,7 +139,7 @@ func TestHandlerHTTPAndSSE(t *testing.T) {
 }
 
 func TestHandlerDefaultsAndValidation(t *testing.T) {
-	srv := httptest.NewServer(NewHandler(NewService(NewMemoryStore())))
+	srv := httptest.NewServer(NewHandler(NewService(NewMemoryStore(), "")))
 	defer srv.Close()
 
 	node := postJSONNode(t, srv.URL+"/nodes", "", map[string]interface{}{"name": "agent"}, http.StatusCreated)
@@ -157,7 +157,7 @@ func TestHandlerDefaultsAndValidation(t *testing.T) {
 }
 
 func TestHandlerMessagesAndGraph(t *testing.T) {
-	srv := httptest.NewServer(NewHandler(NewService(NewMemoryStore())))
+	srv := httptest.NewServer(NewHandler(NewService(NewMemoryStore(), "")))
 	defer srv.Close()
 
 	nodeA := postJSONNode(t, srv.URL+"/nodes", "", map[string]interface{}{"name": "agent-a"}, http.StatusCreated)
