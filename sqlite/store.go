@@ -24,18 +24,18 @@ type SQLiteStore struct {
 }
 
 type nodeModel struct {
-	ID       string `gorm:"column:id;primaryKey"`
-	Name     string `gorm:"column:name;not null"`
-	MetaJSON string `gorm:"column:meta_json;not null"`
+	ID          string `gorm:"column:id;primaryKey"`
+	Name        string `gorm:"column:name;not null"`
+	Description string `gorm:"column:description"`
+	MetaJSON    string `gorm:"column:meta_json;not null"`
 }
 
 func (nodeModel) TableName() string { return "nodes" }
 
 type spaceModel struct {
-	ID                string `gorm:"column:id;primaryKey"`
-	Name              string `gorm:"column:name;uniqueIndex;not null"`
-	TagsJSON          string `gorm:"column:tags_json"`
-	ContentSchemaJSON string `gorm:"column:content_schema_json"`
+	ID       string `gorm:"column:id;primaryKey"`
+	Name     string `gorm:"column:name;uniqueIndex;not null"`
+	TagsJSON string `gorm:"column:tags_json"`
 }
 
 func (spaceModel) TableName() string { return "spaces" }
@@ -49,13 +49,15 @@ type spaceNodeModel struct {
 func (spaceNodeModel) TableName() string { return "space_nodes" }
 
 type messageModel struct {
-	Seq         uint   `gorm:"column:seq;primaryKey;autoIncrement;index:idx_messages_space_seq,priority:2"`
-	ID          string `gorm:"column:id;uniqueIndex;not null"`
-	SpaceID     string `gorm:"column:space_id;not null;index:idx_messages_space_seq,priority:1"`
-	Sender      string `gorm:"column:sender;not null"`
-	CreatedAt   string `gorm:"column:created_at"`
-	ContentJSON string `gorm:"column:content_json;not null"`
-	RefsJSON    string `gorm:"column:refs_json;not null"`
+	Seq               uint   `gorm:"column:seq;primaryKey;autoIncrement;index:idx_messages_space_seq,priority:2"`
+	ID                string `gorm:"column:id;uniqueIndex;not null"`
+	SpaceID           string `gorm:"column:space_id;not null;index:idx_messages_space_seq,priority:1"`
+	Sender            string `gorm:"column:sender;not null"`
+	CreatedAt         string `gorm:"column:created_at"`
+	ContentJSON       string `gorm:"column:content_json;not null"`
+	RefsJSON          string `gorm:"column:refs_json;not null"`
+	MetaJSON          string `gorm:"column:meta_json"`
+	ContentSchemaJSON string `gorm:"column:content_schema_json"`
 }
 
 func (messageModel) TableName() string { return "messages" }
@@ -114,7 +116,7 @@ func (s *SQLiteStore) PutNode(node ioa.Node) error {
 	}
 	return s.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"name", "meta_json"}),
+		DoUpdates: clause.AssignmentColumns([]string{"name", "description", "meta_json"}),
 	}).Create(&model).Error
 }
 
@@ -232,7 +234,7 @@ func (s *SQLiteStore) GetSpace(spaceID string) (ioa.Space, bool, error) {
 	return space, err == nil, err
 }
 
-func (s *SQLiteStore) SetContentSchema(spaceID string, schema map[string]interface{}) error {
+func (s *SQLiteStore) SetContentSchema(spaceID, rootMessageID string, schema map[string]interface{}) error {
 	encoded := ""
 	if schema != nil {
 		data, err := encodeJSON(schema)
@@ -241,14 +243,14 @@ func (s *SQLiteStore) SetContentSchema(spaceID string, schema map[string]interfa
 		}
 		encoded = data
 	}
-	return s.db.Model(&spaceModel{}).
-		Where(&spaceModel{ID: spaceID}).
+	return s.db.Model(&messageModel{}).
+		Where("id = ? AND space_id = ?", rootMessageID, spaceID).
 		Update("content_schema_json", encoded).Error
 }
 
-func (s *SQLiteStore) GetContentSchema(spaceID string) (map[string]interface{}, error) {
-	var model spaceModel
-	if err := s.db.Select("content_schema_json").Where(&spaceModel{ID: spaceID}).First(&model).Error; err != nil {
+func (s *SQLiteStore) GetContentSchema(spaceID, rootMessageID string) (map[string]interface{}, error) {
+	var model messageModel
+	if err := s.db.Select("content_schema_json").Where("id = ? AND space_id = ?", rootMessageID, spaceID).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -456,11 +458,11 @@ func makeNodeModel(node ioa.Node) (nodeModel, error) {
 	if err != nil {
 		return nodeModel{}, err
 	}
-	return nodeModel{ID: node.ID, Name: node.Name, MetaJSON: meta}, nil
+	return nodeModel{ID: node.ID, Name: node.Name, Description: node.Description, MetaJSON: meta}, nil
 }
 
 func (m nodeModel) toNode() (ioa.Node, error) {
-	node := ioa.Node{ID: m.ID, Name: m.Name, Meta: map[string]interface{}{}}
+	node := ioa.Node{ID: m.ID, Name: m.Name, Description: m.Description, Meta: map[string]interface{}{}}
 	if err := decodeJSON(m.MetaJSON, &node.Meta); err != nil {
 		return ioa.Node{}, err
 	}
@@ -495,13 +497,29 @@ func makeMessageModel(message ioa.MessageRecord) (messageModel, error) {
 	if err != nil {
 		return messageModel{}, err
 	}
+	var metaJSON string
+	if message.Meta != nil {
+		metaJSON, err = encodeJSON(message.Meta)
+		if err != nil {
+			return messageModel{}, err
+		}
+	}
+	var schemaJSON string
+	if message.ContentSchema != nil {
+		schemaJSON, err = encodeJSON(message.ContentSchema)
+		if err != nil {
+			return messageModel{}, err
+		}
+	}
 	return messageModel{
-		ID:          message.ID,
-		SpaceID:     message.SpaceID,
-		Sender:      message.Sender,
-		CreatedAt:   message.CreatedAt,
-		ContentJSON: content,
-		RefsJSON:    refs,
+		ID:                message.ID,
+		SpaceID:           message.SpaceID,
+		Sender:            message.Sender,
+		CreatedAt:         message.CreatedAt,
+		ContentJSON:       content,
+		RefsJSON:          refs,
+		MetaJSON:          metaJSON,
+		ContentSchemaJSON: schemaJSON,
 	}, nil
 }
 
@@ -524,6 +542,18 @@ func (m messageModel) toMessage() (ioa.MessageRecord, error) {
 	}
 	if message.Refs.Nodes == nil {
 		message.Refs.Nodes = []string{}
+	}
+	if strings.TrimSpace(m.MetaJSON) != "" {
+		message.Meta = map[string]interface{}{}
+		if err := decodeJSON(m.MetaJSON, &message.Meta); err != nil {
+			return ioa.MessageRecord{}, err
+		}
+	}
+	if strings.TrimSpace(m.ContentSchemaJSON) != "" {
+		message.ContentSchema = map[string]interface{}{}
+		if err := decodeJSON(m.ContentSchemaJSON, &message.ContentSchema); err != nil {
+			return ioa.MessageRecord{}, err
+		}
 	}
 	return message, nil
 }

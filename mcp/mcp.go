@@ -64,7 +64,8 @@ func registerMCPTools(s *mcpserver.MCPServer, bridge *mcpBridge) {
 		mcp.WithString("space_id", mcp.Required(), mcp.Description("IOA space id")),
 		mcp.WithObject("content", mcp.Required(), mcp.Description("Structured message content")),
 		mcp.WithObject("refs", mcp.Description("Optional references: {\"messages\": [\"msg-id\"], \"nodes\": [\"node-id\"]}")),
-		mcp.WithObject("content_schema", mcp.Description("Optional JSON Schema to set on the space. All subsequent messages must have content conforming to this schema.")),
+		mcp.WithObject("meta", mcp.Description("Optional metadata for the message (e.g. kind, labels, ttl). Not part of content; used for routing, filtering, and lifecycle.")),
+		mcp.WithObject("content_schema", mcp.Description("Optional JSON Schema to set on the thread. Attaches to the thread's root message. All subsequent messages in the same thread must conform to this schema.")),
 	)
 	s.AddTool(sendTool, bridge.handleSend)
 
@@ -135,6 +136,13 @@ func (b *mcpBridge) handleSend(ctx context.Context, request mcp.CallToolRequest)
 		_ = json.Unmarshal(data, refs)
 	}
 
+	var meta map[string]interface{}
+	if metaRaw, has := args["meta"]; has && metaRaw != nil {
+		if m, ok := metaRaw.(map[string]interface{}); ok {
+			meta = m
+		}
+	}
+
 	var contentSchema map[string]interface{}
 	if schemaRaw, has := args["content_schema"]; has && schemaRaw != nil {
 		if m, ok := schemaRaw.(map[string]interface{}); ok {
@@ -150,6 +158,7 @@ func (b *mcpBridge) handleSend(ctx context.Context, request mcp.CallToolRequest)
 	message, err := b.service.SendMessage(ctx, spaceID, nodeID, ioa.SendMessage{
 		Content:       content,
 		Refs:          refs,
+		Meta:          meta,
 		ContentSchema: contentSchema,
 	})
 	if err != nil {

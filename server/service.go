@@ -67,9 +67,10 @@ func (s *Service) RegisterNode(ctx context.Context, body ioa.NodeCreate) (ioa.No
 		return ioa.Node{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "name is required")
 	}
 	node := ioa.Node{
-		ID:   ioa.NewID(),
-		Name: body.Name,
-		Meta: defaultMeta(body.Meta),
+		ID:          ioa.NewID(),
+		Name:        body.Name,
+		Description: body.Description,
+		Meta:        defaultMeta(body.Meta),
 	}
 	if err := s.store.PutNode(node); err != nil {
 		return ioa.Node{}, err
@@ -96,14 +97,21 @@ func (s *Service) CreateSpace(ctx context.Context, callerNodeID string, body ioa
 	if strings.TrimSpace(body.Name) == "" {
 		return ioa.SpaceInfo{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "Space name is required")
 	}
-	if strings.TrimSpace(body.Description) == "" {
+	description := body.Description
+	if strings.TrimSpace(description) == "" {
+		node, ok, _ := s.store.GetNode(nodeID)
+		if ok && node.Description != "" {
+			description = node.Description
+		}
+	}
+	if strings.TrimSpace(description) == "" {
 		return ioa.SpaceInfo{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "Space description is required")
 	}
 	space, err := s.store.PutSpaceIfAbsent(ioa.Space{ID: ioa.NewID(), Name: body.Name, Tags: body.Tags})
 	if err != nil {
 		return ioa.SpaceInfo{}, err
 	}
-	if err := s.store.JoinSpace(space.ID, nodeID, body.Description); err != nil {
+	if err := s.store.JoinSpace(space.ID, nodeID, description); err != nil {
 		return ioa.SpaceInfo{}, err
 	}
 	return s.spaceInfo(space)
@@ -128,24 +136,6 @@ func (s *Service) SendMessage(ctx context.Context, spaceID, callerNodeID string,
 	if body.Content == nil {
 		return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content is required")
 	}
-	if body.ContentSchema != nil {
-		if err := compileContentSchema(body.ContentSchema); err != nil {
-			return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content_schema is not valid JSON Schema: %s", err)
-		}
-		if err := s.store.SetContentSchema(spaceID, body.ContentSchema); err != nil {
-			return ioa.Message{}, err
-		}
-	} else {
-		schema, err := s.store.GetContentSchema(spaceID)
-		if err != nil {
-			return ioa.Message{}, err
-		}
-		if schema != nil {
-			if err := validateContent(body.Content, schema); err != nil {
-				return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content does not match space schema: %s", err)
-			}
-		}
-	}
 	refs := emptyRef()
 	if body.Refs != nil {
 		refs = completeRef(*body.Refs)
@@ -153,6 +143,33 @@ func (s *Service) SendMessage(ctx context.Context, spaceID, callerNodeID string,
 	if err := s.validateRefs(refs, spaceID); err != nil {
 		return ioa.Message{}, err
 	}
+
+	rootMessageID, err := s.findRootMessageID(spaceID, refs)
+	if err != nil {
+		return ioa.Message{}, err
+	}
+
+	if body.ContentSchema != nil {
+		if err := compileContentSchema(body.ContentSchema); err != nil {
+			return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content_schema is not valid JSON Schema: %s", err)
+		}
+		if rootMessageID != "" {
+			if err := s.store.SetContentSchema(spaceID, rootMessageID, body.ContentSchema); err != nil {
+				return ioa.Message{}, err
+			}
+		}
+	} else if rootMessageID != "" {
+		schema, err := s.store.GetContentSchema(spaceID, rootMessageID)
+		if err != nil {
+			return ioa.Message{}, err
+		}
+		if schema != nil {
+			if err := validateContent(body.Content, schema); err != nil {
+				return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content does not match thread schema: %s", err)
+			}
+		}
+	}
+
 	record := ioa.MessageRecord{
 		ID:        ioa.NewID(),
 		SpaceID:   spaceID,
@@ -160,9 +177,18 @@ func (s *Service) SendMessage(ctx context.Context, spaceID, callerNodeID string,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		Content:   body.Content,
 		Refs:      refs,
+		Meta:      body.Meta,
+	}
+	if rootMessageID == "" && body.ContentSchema != nil {
+		record.ContentSchema = body.ContentSchema
 	}
 	if err := s.store.AppendMessage(record); err != nil {
 		return ioa.Message{}, err
+	}
+	if rootMessageID == "" && body.ContentSchema != nil {
+		if err := s.store.SetContentSchema(spaceID, record.ID, body.ContentSchema); err != nil {
+			return ioa.Message{}, err
+		}
 	}
 	message := ioa.ExposeMessage(record)
 	s.hub.Broadcast(spaceID, message)
@@ -267,7 +293,7 @@ func (s *Service) AuthRegister(ctx context.Context, body ioa.AuthRegister) (ioa.
 		return ioa.AuthResponse{}, err
 	}
 	if !ok {
-		node, err = s.RegisterNode(ctx, ioa.NodeCreate{Name: body.Name, Meta: body.Meta})
+		node, err = s.RegisterNode(ctx, ioa.NodeCreate{Name: body.Name, Description: body.Description, Meta: body.Meta})
 		if err != nil {
 			return ioa.AuthResponse{}, err
 		}
@@ -314,6 +340,31 @@ func (s *Service) requireSpace(spaceID string) (ioa.Space, error) {
 	return space, nil
 }
 
+func (s *Service) findRootMessageID(spaceID string, refs ioa.Ref) (string, error) {
+	if len(refs.Messages) == 0 {
+		return "", nil
+	}
+	current := refs.Messages[0]
+	visited := make(map[string]bool)
+	for {
+		if visited[current] {
+			return current, nil
+		}
+		visited[current] = true
+		msg, ok, err := s.store.GetMessage(spaceID, current)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			return current, nil
+		}
+		if len(msg.Refs.Messages) == 0 {
+			return current, nil
+		}
+		current = msg.Refs.Messages[0]
+	}
+}
+
 func (s *Service) spaceInfo(space ioa.Space) (ioa.SpaceInfo, error) {
 	nodes, err := s.store.GetSpaceNodes(space.ID)
 	if err != nil {
@@ -323,17 +374,12 @@ func (s *Service) spaceInfo(space ioa.Space) (ioa.SpaceInfo, error) {
 	if err != nil {
 		return ioa.SpaceInfo{}, err
 	}
-	schema, err := s.store.GetContentSchema(space.ID)
-	if err != nil {
-		return ioa.SpaceInfo{}, err
-	}
 	info := ioa.SpaceInfo{
-		ID:            space.ID,
-		Name:          space.Name,
-		Tags:          space.Tags,
-		Nodes:         make([]ioa.SpaceNode, 0, len(nodes)),
-		MessageCount:  count,
-		ContentSchema: schema,
+		ID:           space.ID,
+		Name:         space.Name,
+		Tags:         space.Tags,
+		Nodes:        make([]ioa.SpaceNode, 0, len(nodes)),
+		MessageCount: count,
 	}
 	for _, node := range nodes {
 		info.Nodes = append(info.Nodes, ioa.SpaceNode{

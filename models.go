@@ -10,26 +10,31 @@ type Ref struct {
 }
 
 type Node struct {
-	ID   string                 `json:"id"`
-	Name string                 `json:"name"`
-	Meta map[string]interface{} `json:"meta"`
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Meta        map[string]interface{} `json:"meta"`
 }
 
 type Message struct {
-	ID        string                 `json:"id"`
-	Sender    string                 `json:"sender"`
-	CreatedAt string                 `json:"created_at"`
-	Content   map[string]interface{} `json:"content"`
-	Refs      Ref                    `json:"refs"`
+	ID            string                 `json:"id"`
+	Sender        string                 `json:"sender"`
+	CreatedAt     string                 `json:"created_at"`
+	Content       map[string]interface{} `json:"content"`
+	Refs          Ref                    `json:"refs"`
+	Meta          map[string]interface{} `json:"meta,omitempty"`
+	ContentSchema map[string]interface{} `json:"content_schema,omitempty"`
 }
 
 type MessageRecord struct {
-	ID        string                 `json:"id"`
-	SpaceID   string                 `json:"space_id"`
-	Sender    string                 `json:"sender"`
-	CreatedAt string                 `json:"created_at"`
-	Content   map[string]interface{} `json:"content"`
-	Refs      Ref                    `json:"refs"`
+	ID            string                 `json:"id"`
+	SpaceID       string                 `json:"space_id"`
+	Sender        string                 `json:"sender"`
+	CreatedAt     string                 `json:"created_at"`
+	Content       map[string]interface{} `json:"content"`
+	Refs          Ref                    `json:"refs"`
+	Meta          map[string]interface{} `json:"meta,omitempty"`
+	ContentSchema map[string]interface{} `json:"content_schema,omitempty"`
 }
 
 type MessageFilter struct {
@@ -82,17 +87,17 @@ type SpaceNode struct {
 }
 
 type SpaceInfo struct {
-	ID            string                 `json:"id"`
-	Name          string                 `json:"name"`
-	Tags          []string               `json:"tags,omitempty"`
-	Nodes         []SpaceNode            `json:"nodes"`
-	MessageCount  int                    `json:"message_count"`
-	ContentSchema map[string]interface{} `json:"content_schema,omitempty"`
+	ID           string      `json:"id"`
+	Name         string      `json:"name"`
+	Tags         []string    `json:"tags,omitempty"`
+	Nodes        []SpaceNode `json:"nodes"`
+	MessageCount int         `json:"message_count"`
 }
 
 type NodeCreate struct {
-	Name string                 `json:"name"`
-	Meta map[string]interface{} `json:"meta"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Meta        map[string]interface{} `json:"meta"`
 }
 
 type SpaceCreate struct {
@@ -104,6 +109,7 @@ type SpaceCreate struct {
 type SendMessage struct {
 	Content       map[string]interface{} `json:"content"`
 	Refs          *Ref                   `json:"refs,omitempty"`
+	Meta          map[string]interface{} `json:"meta,omitempty"`
 	ContentSchema map[string]interface{} `json:"content_schema,omitempty"`
 }
 
@@ -115,9 +121,10 @@ type ReadOptions struct {
 }
 
 type AuthRegister struct {
-	Name      string                 `json:"name"`
-	AccessKey string                 `json:"access_key"`
-	Meta      map[string]interface{} `json:"meta"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	AccessKey   string                 `json:"access_key"`
+	Meta        map[string]interface{} `json:"meta"`
 }
 
 type AuthResponse struct {
@@ -137,11 +144,13 @@ type SpaceNodeRecord struct {
 
 func ExposeMessage(record MessageRecord) Message {
 	return Message{
-		ID:        record.ID,
-		Sender:    record.Sender,
-		CreatedAt: record.CreatedAt,
-		Content:   record.Content,
-		Refs:      record.Refs,
+		ID:            record.ID,
+		Sender:        record.Sender,
+		CreatedAt:     record.CreatedAt,
+		Content:       record.Content,
+		Refs:          record.Refs,
+		Meta:          record.Meta,
+		ContentSchema: record.ContentSchema,
 	}
 }
 

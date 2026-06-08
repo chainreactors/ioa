@@ -21,6 +21,7 @@ type Client struct {
 	httpClient *http.Client
 	nodeID     string
 	token      string
+	accessKey  string
 }
 
 func NewClient(baseURL string, nodeID string) (*Client, error) {
@@ -51,14 +52,15 @@ func (c *Client) NodeID() string {
 	return c.nodeID
 }
 
-func (c *Client) Register(ctx context.Context, accessKey, name string, meta map[string]interface{}) (ioa.AuthResponse, error) {
-	body := ioa.AuthRegister{Name: name, AccessKey: accessKey, Meta: meta}
+func (c *Client) Register(ctx context.Context, accessKey, name, description string, meta map[string]interface{}) (ioa.AuthResponse, error) {
+	body := ioa.AuthRegister{Name: name, Description: description, AccessKey: accessKey, Meta: meta}
 	var resp ioa.AuthResponse
 	if err := c.do(ctx, http.MethodPost, "/auth/register", nil, body, &resp); err != nil {
 		return ioa.AuthResponse{}, err
 	}
 	c.token = resp.Token
 	c.nodeID = resp.ID
+	c.accessKey = accessKey
 	return resp, nil
 }
 
@@ -142,9 +144,9 @@ func (c *Client) ReadPublic(ctx context.Context, spaceID string, opts ioa.ReadOp
 	return messages, nil
 }
 
-func (c *Client) RegisterNode(ctx context.Context, name string, meta map[string]interface{}) (ioa.Node, error) {
+func (c *Client) RegisterNode(ctx context.Context, name, description string, meta map[string]interface{}) (ioa.Node, error) {
 	var node ioa.Node
-	if err := c.do(ctx, http.MethodPost, "/nodes", nil, ioa.NodeCreate{Name: name, Meta: meta}, &node); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/nodes", nil, ioa.NodeCreate{Name: name, Description: description, Meta: meta}, &node); err != nil {
 		return ioa.Node{}, err
 	}
 	c.nodeID = node.ID
@@ -155,8 +157,12 @@ func (c *Client) Space(ctx context.Context, name, description string, tags ...st
 	if c.nodeID == "" {
 		return ioa.SpaceInfo{}, fmt.Errorf("No node: call register_node() first")
 	}
+	headers := map[string]string{"X-Node-ID": c.nodeID}
+	if c.accessKey != "" {
+		headers["X-Access-Key"] = c.accessKey
+	}
 	var info ioa.SpaceInfo
-	if err := c.do(ctx, http.MethodPost, "/spaces", map[string]string{"X-Node-ID": c.nodeID}, ioa.SpaceCreate{Name: name, Description: description, Tags: tags}, &info); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/spaces", headers, ioa.SpaceCreate{Name: name, Description: description, Tags: tags}, &info); err != nil {
 		return ioa.SpaceInfo{}, err
 	}
 	return info, nil
@@ -193,6 +199,9 @@ func (c *Client) Subscribe(ctx context.Context, spaceID string) (<-chan ioa.Mess
 		return nil, nil, nil, err
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

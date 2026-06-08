@@ -94,3 +94,75 @@ func TestSQLiteStoreProtocol(t *testing.T) {
 		t.Fatalf("graph stats = %#v, want one space, two messages, and edges", graph.Stats)
 	}
 }
+
+func TestSQLiteStoreContentSchema(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "ioa.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := context.Background()
+	service := server.NewService(store, "")
+
+	node, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent"})
+	if err != nil {
+		t.Fatalf("RegisterNode error = %v", err)
+	}
+	space, err := service.CreateSpace(ctx, node.ID, ioa.SpaceCreate{Name: "schema-test", Description: "tester"})
+	if err != nil {
+		t.Fatalf("CreateSpace error = %v", err)
+	}
+
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"type": map[string]interface{}{"type": "string"},
+			"body": map[string]interface{}{"type": "string"},
+		},
+		"required": []interface{}{"type", "body"},
+	}
+
+	// Root message sets thread schema
+	root, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content:       map[string]interface{}{"text": "root"},
+		ContentSchema: schema,
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(root) error = %v", err)
+	}
+
+	// Compliant reply passes
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"type": "task", "body": "do something"},
+		Refs:    &ioa.Ref{Messages: []string{root.ID}},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(compliant) error = %v", err)
+	}
+
+	// Non-compliant reply fails
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"wrong": "fields"},
+		Refs:    &ioa.Ref{Messages: []string{root.ID}},
+	})
+	if err == nil {
+		t.Fatal("SendMessage(non-compliant) error = nil, want error")
+	}
+
+	// Different thread in same space with different schema
+	root2, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content:       map[string]interface{}{"text": "root2"},
+		ContentSchema: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"status": map[string]interface{}{"type": "string"}}, "required": []interface{}{"status"}},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(root2) error = %v", err)
+	}
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"status": "ok"},
+		Refs:    &ioa.Ref{Messages: []string{root2.ID}},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(thread2 compliant) error = %v", err)
+	}
+}

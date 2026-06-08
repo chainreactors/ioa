@@ -15,7 +15,7 @@ type MemoryStore struct {
 	spaceNames   map[string]string
 	messages     map[string][]ioa.MessageRecord
 	spaceNodes   map[string]map[string]string
-	spaceSchemas map[string]map[string]interface{}
+	messageSchemas map[string]map[string]interface{}
 	tokens       map[string]string // sha256(token) → nodeID
 }
 
@@ -26,7 +26,7 @@ func NewMemoryStore() *MemoryStore {
 		spaceNames:   make(map[string]string),
 		messages:     make(map[string][]ioa.MessageRecord),
 		spaceNodes:   make(map[string]map[string]string),
-		spaceSchemas: make(map[string]map[string]interface{}),
+		messageSchemas: make(map[string]map[string]interface{}),
 		tokens:       make(map[string]string),
 	}
 }
@@ -133,21 +133,22 @@ func (s *MemoryStore) GetSpaceNodes(spaceID string) ([]ioa.SpaceNodeRecord, erro
 	return result, nil
 }
 
-func (s *MemoryStore) SetContentSchema(spaceID string, schema map[string]interface{}) error {
+func (s *MemoryStore) SetContentSchema(spaceID, rootMessageID string, schema map[string]interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	key := spaceID + "\x00" + rootMessageID
 	if schema == nil {
-		delete(s.spaceSchemas, spaceID)
+		delete(s.messageSchemas, key)
 	} else {
-		s.spaceSchemas[spaceID] = schema
+		s.messageSchemas[key] = schema
 	}
 	return nil
 }
 
-func (s *MemoryStore) GetContentSchema(spaceID string) (map[string]interface{}, error) {
+func (s *MemoryStore) GetContentSchema(spaceID, rootMessageID string) (map[string]interface{}, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.spaceSchemas[spaceID], nil
+	return s.messageSchemas[spaceID+"\x00"+rootMessageID], nil
 }
 
 func (s *MemoryStore) AppendMessage(message ioa.MessageRecord) error {

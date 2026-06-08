@@ -141,6 +141,45 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	if containsMessageID(all, emptyContent.ID) == false || containsMessageID(all, nilRef.ID) == false {
 		t.Fatalf("expected explicit default messages in all messages: %#v", all)
 	}
+
+	// Meta round-trip
+	metaMsg, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"text": "with-meta"},
+		Meta:    map[string]interface{}{"kind": "plan", "labels": []interface{}{"security", "review"}},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(meta) error = %v", err)
+	}
+	if metaMsg.Meta == nil {
+		t.Fatalf("meta = nil, want non-nil")
+	}
+	if metaMsg.Meta["kind"] != "plan" {
+		t.Fatalf("meta.kind = %v, want plan", metaMsg.Meta["kind"])
+	}
+	readAll, err := service.ReadMessages(ctx, space.ID, "", ioa.ReadOptions{All: true})
+	if err != nil {
+		t.Fatalf("ReadMessages(all after meta) error = %v", err)
+	}
+	var found bool
+	for _, msg := range readAll {
+		if msg.ID == metaMsg.ID && msg.Meta != nil && msg.Meta["kind"] == "plan" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("meta not preserved in read messages")
+	}
+
+	// No meta — omitted
+	noMeta, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"text": "no-meta"},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(no meta) error = %v", err)
+	}
+	if noMeta.Meta != nil {
+		t.Fatalf("no-meta msg meta = %#v, want nil", noMeta.Meta)
+	}
 }
 
 func runContentSchemaTest(t *testing.T, store Store) {
@@ -157,7 +196,7 @@ func runContentSchemaTest(t *testing.T, store Store) {
 		t.Fatalf("CreateSpace error = %v", err)
 	}
 
-	schema := map[string]interface{}{
+	schemaA := map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"type": map[string]interface{}{"type": "string"},
@@ -166,70 +205,76 @@ func runContentSchemaTest(t *testing.T, store Store) {
 		"required": []interface{}{"type", "body"},
 	}
 
-	// Setting schema — the message itself is not validated
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
-		Content:       map[string]interface{}{"text": "I set the schema"},
-		ContentSchema: schema,
+	// Thread 1: root message sets schemaA
+	root1, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content:       map[string]interface{}{"text": "thread 1 root"},
+		ContentSchema: schemaA,
 	})
 	if err != nil {
-		t.Fatalf("SendMessage(set schema) error = %v", err)
+		t.Fatalf("SendMessage(root1) error = %v", err)
+	}
+	if root1.ContentSchema == nil {
+		t.Fatalf("root1.ContentSchema = nil, want schemaA")
 	}
 
-	// SpaceInfo should include the schema
-	info, err := service.GetSpace(ctx, space.ID)
-	if err != nil {
-		t.Fatalf("GetSpace error = %v", err)
-	}
-	if info.ContentSchema == nil {
-		t.Fatalf("SpaceInfo.ContentSchema = nil, want schema")
-	}
-
-	// Compliant message passes
+	// Thread 1: compliant reply passes
 	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
 		Content: map[string]interface{}{"type": "task", "body": "do something"},
+		Refs:    &ioa.Ref{Messages: []string{root1.ID}},
 	})
 	if err != nil {
-		t.Fatalf("SendMessage(compliant) error = %v", err)
+		t.Fatalf("SendMessage(thread1 compliant) error = %v", err)
 	}
 
-	// Non-compliant message fails with 422
+	// Thread 1: non-compliant reply fails 422
 	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
 		Content: map[string]interface{}{"wrong": "fields"},
+		Refs:    &ioa.Ref{Messages: []string{root1.ID}},
 	})
 	if err == nil || statusOf(err) != 422 {
-		t.Fatalf("SendMessage(non-compliant) error = %v, want 422", err)
+		t.Fatalf("SendMessage(thread1 non-compliant) error = %v, want 422", err)
 	}
 
-	// Update schema to something different
-	newSchema := map[string]interface{}{
+	// Thread 2: different schema in same space
+	schemaB := map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"status": map[string]interface{}{"type": "string"},
 		},
 		"required": []interface{}{"status"},
 	}
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
-		Content:       map[string]interface{}{"text": "updating schema"},
-		ContentSchema: newSchema,
+	root2, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content:       map[string]interface{}{"text": "thread 2 root"},
+		ContentSchema: schemaB,
 	})
 	if err != nil {
-		t.Fatalf("SendMessage(update schema) error = %v", err)
+		t.Fatalf("SendMessage(root2) error = %v", err)
 	}
 
-	// Old-format message now fails
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
-		Content: map[string]interface{}{"type": "task", "body": "do something"},
-	})
-	if err == nil || statusOf(err) != 422 {
-		t.Fatalf("SendMessage(old format) error = %v, want 422", err)
-	}
-
-	// New-format message passes
+	// Thread 2: compliant reply passes
 	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
 		Content: map[string]interface{}{"status": "done"},
+		Refs:    &ioa.Ref{Messages: []string{root2.ID}},
 	})
 	if err != nil {
-		t.Fatalf("SendMessage(new format) error = %v", err)
+		t.Fatalf("SendMessage(thread2 compliant) error = %v", err)
+	}
+
+	// Thread 2: schemaA-format reply fails (wrong schema for this thread)
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"type": "task", "body": "do something"},
+		Refs:    &ioa.Ref{Messages: []string{root2.ID}},
+	})
+	if err == nil || statusOf(err) != 422 {
+		t.Fatalf("SendMessage(thread2 wrong schema) error = %v, want 422", err)
+	}
+
+	// Standalone root without schema: any content passes
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"arbitrary": "data"},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(no-schema root) error = %v", err)
 	}
 
 	// Invalid schema is rejected
@@ -239,6 +284,29 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	})
 	if err == nil || statusOf(err) != 422 {
 		t.Fatalf("SendMessage(invalid schema) error = %v, want 422", err)
+	}
+
+	// Deep thread: reply to a reply still validates against root schema
+	child1, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"type": "task", "body": "child"},
+		Refs:    &ioa.Ref{Messages: []string{root1.ID}},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(child1) error = %v", err)
+	}
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"type": "task", "body": "grandchild"},
+		Refs:    &ioa.Ref{Messages: []string{child1.ID}},
+	})
+	if err != nil {
+		t.Fatalf("SendMessage(grandchild compliant) error = %v", err)
+	}
+	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+		Content: map[string]interface{}{"wrong": "grandchild"},
+		Refs:    &ioa.Ref{Messages: []string{child1.ID}},
+	})
+	if err == nil || statusOf(err) != 422 {
+		t.Fatalf("SendMessage(grandchild non-compliant) error = %v, want 422", err)
 	}
 }
 

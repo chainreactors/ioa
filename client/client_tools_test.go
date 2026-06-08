@@ -77,11 +77,11 @@ func TestClientProjections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient(b) error = %v", err)
 	}
-	nodeA, err := clientA.RegisterNode(ctx, "agent-a", nil)
+	nodeA, err := clientA.RegisterNode(ctx, "agent-a", "", nil)
 	if err != nil {
 		t.Fatalf("RegisterNode(a) error = %v", err)
 	}
-	nodeB, err := clientB.RegisterNode(ctx, "agent-b", nil)
+	nodeB, err := clientB.RegisterNode(ctx, "agent-b", "", nil)
 	if err != nil {
 		t.Fatalf("RegisterNode(b) error = %v", err)
 	}
