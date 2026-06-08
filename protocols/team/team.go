@@ -93,9 +93,12 @@ func Schema() map[string]any {
 	s, err := skills.ReadSchema("team")
 	if err != nil {
 		return map[string]any{
-			"type":       "object",
-			"properties": map[string]any{"type": map[string]any{"type": "string", "const": "team"}},
-			"required":   []string{"type", "team", "text"},
+			"type": "object",
+			"properties": map[string]any{
+				"team": map[string]any{"type": "string"},
+				"text": map[string]any{"type": "string"},
+			},
+			"required": []string{"team", "text"},
 		}
 	}
 	return s
