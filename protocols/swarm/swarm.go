@@ -50,7 +50,7 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 		}
 	}
 
-	body := ioa.SendMessage{Content: SwarmContent(msg)}
+	body := ioa.SendMessage{ContentType: "swarm", Content: SwarmContent(msg)}
 	if flags.Task {
 		body.Content["task"] = true
 	}

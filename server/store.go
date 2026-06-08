@@ -14,9 +14,6 @@ type Store interface {
 	JoinSpace(spaceID, nodeID, description string) error
 	GetSpaceNodes(spaceID string) ([]ioa.SpaceNodeRecord, error)
 
-	SetContentSchema(spaceID, rootMessageID string, schema map[string]interface{}) error
-	GetContentSchema(spaceID, rootMessageID string) (map[string]interface{}, error)
-
 	AppendMessage(message ioa.MessageRecord) error
 	GetMessage(spaceID, messageID string) (ioa.MessageRecord, bool, error)
 	GetMessagesForNode(spaceID, nodeID, after string, limit int) ([]ioa.MessageRecord, error)

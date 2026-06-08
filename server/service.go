@@ -144,51 +144,25 @@ func (s *Service) SendMessage(ctx context.Context, spaceID, callerNodeID string,
 		return ioa.Message{}, err
 	}
 
-	rootMessageID, err := s.findRootMessageID(spaceID, refs)
-	if err != nil {
-		return ioa.Message{}, err
-	}
-
 	if body.ContentSchema != nil {
 		if err := compileContentSchema(body.ContentSchema); err != nil {
 			return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content_schema is not valid JSON Schema: %s", err)
 		}
-		if rootMessageID != "" {
-			if err := s.store.SetContentSchema(spaceID, rootMessageID, body.ContentSchema); err != nil {
-				return ioa.Message{}, err
-			}
-		}
-	} else if rootMessageID != "" {
-		schema, err := s.store.GetContentSchema(spaceID, rootMessageID)
-		if err != nil {
-			return ioa.Message{}, err
-		}
-		if schema != nil {
-			if err := validateContent(body.Content, schema); err != nil {
-				return ioa.Message{}, ioa.ProtocolError(http.StatusUnprocessableEntity, "content does not match thread schema: %s", err)
-			}
-		}
 	}
 
 	record := ioa.MessageRecord{
-		ID:        ioa.NewID(),
-		SpaceID:   spaceID,
-		Sender:    sender,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		Content:   body.Content,
-		Refs:      refs,
-		Meta:      body.Meta,
-	}
-	if rootMessageID == "" && body.ContentSchema != nil {
-		record.ContentSchema = body.ContentSchema
+		ID:            ioa.NewID(),
+		SpaceID:       spaceID,
+		Sender:        sender,
+		CreatedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+		ContentType:   body.ContentType,
+		Content:       body.Content,
+		Refs:          refs,
+		Meta:          body.Meta,
+		ContentSchema: body.ContentSchema,
 	}
 	if err := s.store.AppendMessage(record); err != nil {
 		return ioa.Message{}, err
-	}
-	if rootMessageID == "" && body.ContentSchema != nil {
-		if err := s.store.SetContentSchema(spaceID, record.ID, body.ContentSchema); err != nil {
-			return ioa.Message{}, err
-		}
 	}
 	message := ioa.ExposeMessage(record)
 	s.hub.Broadcast(spaceID, message)
@@ -338,31 +312,6 @@ func (s *Service) requireSpace(spaceID string) (ioa.Space, error) {
 		return ioa.Space{}, ioa.ProtocolError(http.StatusNotFound, "Space '%s' not found", spaceID)
 	}
 	return space, nil
-}
-
-func (s *Service) findRootMessageID(spaceID string, refs ioa.Ref) (string, error) {
-	if len(refs.Messages) == 0 {
-		return "", nil
-	}
-	current := refs.Messages[0]
-	visited := make(map[string]bool)
-	for {
-		if visited[current] {
-			return current, nil
-		}
-		visited[current] = true
-		msg, ok, err := s.store.GetMessage(spaceID, current)
-		if err != nil {
-			return "", err
-		}
-		if !ok {
-			return current, nil
-		}
-		if len(msg.Refs.Messages) == 0 {
-			return current, nil
-		}
-		current = msg.Refs.Messages[0]
-	}
 }
 
 func (s *Service) spaceInfo(space ioa.Space) (ioa.SpaceInfo, error) {

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Team",
+  "description": "Named-group communication within a workspace. content_type: team",
+  "type": "object",
+  "properties": {
+    "team": { "type": "string", "description": "Group name" },
+    "text": { "type": "string", "description": "Message body" }
+  },
+  "required": ["team", "text"],
+  "additionalProperties": true
+}

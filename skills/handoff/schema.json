@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Handoff",
+  "description": "Fire-and-forget work delegation. content_type: handoff. Routing is in refs.nodes.",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string", "description": "Short label for the delegated work" },
+    "message": { "type": "string", "description": "Detailed context for the receiver" }
+  },
+  "additionalProperties": true
+}

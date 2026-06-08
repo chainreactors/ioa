@@ -49,7 +49,6 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 	}
 
 	content := map[string]interface{}{
-		"type":  "checkpoint",
 		"id":    ioa.NewID(),
 		"kind":  flags.Kind,
 		"title": flags.Title,
@@ -64,7 +63,7 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 		content["status"] = NormalizeStatus(flags.Status)
 	}
 
-	msg, err := env.Client.Send(ctx, env.SpaceID, ioa.SendMessage{Content: content})
+	msg, err := env.Client.Send(ctx, env.SpaceID, ioa.SendMessage{ContentType: "checkpoint", Content: content})
 	if err != nil {
 		return "", err
 	}
@@ -89,7 +88,7 @@ func execRead(ctx context.Context, env *protocols.Env) (string, error) {
 
 	var checkpoints []ioa.Message
 	for _, m := range messages {
-		if m.Content["type"] == "checkpoint" {
+		if ioa.MessageContentType(m) == "checkpoint" {
 			checkpoints = append(checkpoints, m)
 		}
 	}

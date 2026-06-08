@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Checkpoint",
+  "description": "Human-in-the-loop review protocol. content_type: checkpoint",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "description": "Unique checkpoint identifier" },
+    "kind": { "type": "string", "description": "Checkpoint kind (e.g. verify, sniper, deep)" },
+    "title": { "type": "string", "description": "Short description" },
+    "content": { "type": "string", "description": "Markdown body with full context for the reviewer" },
+    "target": { "type": "string", "description": "Target host:port or URL" },
+    "status": {
+      "type": "string",
+      "enum": ["confirmed", "not_confirmed", "info", "inconclusive"],
+      "description": "Verification status"
+    },
+    "options": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Reviewer choice options"
+    }
+  },
+  "required": ["id"],
+  "additionalProperties": true
+}

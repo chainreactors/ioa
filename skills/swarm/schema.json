@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Swarm",
+  "description": "Autonomous multi-agent coordination. CRITICAL: swarm messages have NO type field.",
+  "type": "object",
+  "properties": {
+    "content": { "type": "string", "description": "Natural language message" },
+    "targets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Operational targets for tools"
+    },
+    "task": { "type": "boolean", "description": "true → all idle nodes start working" },
+    "meta": { "type": "object", "description": "Additional metadata (kind, capabilities, etc.)" }
+  },
+  "required": ["content"],
+  "additionalProperties": true
+}

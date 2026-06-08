@@ -304,7 +304,7 @@ func (n *Node) announceProfile(ctx context.Context) error {
 		Content: strings.Join(parts, "\n"),
 		Meta:    n.buildMeta(),
 	}
-	sent, err := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{Content: SwarmContent(msg)})
+	sent, err := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{ContentType: "swarm", Content: SwarmContent(msg)})
 	if err != nil {
 		return err
 	}
@@ -409,7 +409,8 @@ func (n *Node) execHeartbeat(ctx context.Context, hb heartbeatConfig) error {
 		report.Content = fmt.Sprintf("Heartbeat %s error: %s", hb.name, runErr.Error())
 	}
 	_, sendErr := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{
-		Content: SwarmContent(report),
+		ContentType: "swarm",
+		Content:     SwarmContent(report),
 	})
 	if runErr != nil {
 		return runErr
@@ -683,8 +684,9 @@ func (n *Node) startTask(ctx context.Context, msg ioa.Message, sm SwarmMessage) 
 	n.cfg.Logger.Importantf("swarm task=received message=%s", msg.ID)
 	running := SwarmMessage{Content: fmt.Sprintf("Accepted task. Executing: %s", truncate(sm.Content, 100))}
 	if _, err := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{
-		Content: SwarmContent(running),
-		Refs:    &ioa.Ref{Messages: []string{msg.ID}},
+		ContentType: "swarm",
+		Content:     SwarmContent(running),
+		Refs:        &ioa.Ref{Messages: []string{msg.ID}},
 	}); err != nil {
 		return nil, err
 	}
@@ -718,8 +720,9 @@ func (n *Node) completeTask(ctx context.Context, res taskResult) error {
 		report.Content = fmt.Sprintf("Error: %s\n\nPartial output:\n%s", res.err.Error(), res.result)
 	}
 	_, sendErr := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{
-		Content: SwarmContent(report),
-		Refs:    &ioa.Ref{Messages: []string{res.messageID}},
+		ContentType: "swarm",
+		Content:     SwarmContent(report),
+		Refs:        &ioa.Ref{Messages: []string{res.messageID}},
 	})
 	if res.err != nil {
 		n.cfg.Logger.Warnf("swarm task=failed message=%s error=%s", res.messageID, res.err)

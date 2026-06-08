@@ -20,6 +20,7 @@ type Message struct {
 	ID            string                 `json:"id"`
 	Sender        string                 `json:"sender"`
 	CreatedAt     string                 `json:"created_at"`
+	ContentType   string                 `json:"content_type,omitempty"`
 	Content       map[string]interface{} `json:"content"`
 	Refs          Ref                    `json:"refs"`
 	Meta          map[string]interface{} `json:"meta,omitempty"`
@@ -31,6 +32,7 @@ type MessageRecord struct {
 	SpaceID       string                 `json:"space_id"`
 	Sender        string                 `json:"sender"`
 	CreatedAt     string                 `json:"created_at"`
+	ContentType   string                 `json:"content_type,omitempty"`
 	Content       map[string]interface{} `json:"content"`
 	Refs          Ref                    `json:"refs"`
 	Meta          map[string]interface{} `json:"meta,omitempty"`
@@ -107,6 +109,7 @@ type SpaceCreate struct {
 }
 
 type SendMessage struct {
+	ContentType   string                 `json:"content_type,omitempty"`
 	Content       map[string]interface{} `json:"content"`
 	Refs          *Ref                   `json:"refs,omitempty"`
 	Meta          map[string]interface{} `json:"meta,omitempty"`
@@ -147,11 +150,22 @@ func ExposeMessage(record MessageRecord) Message {
 		ID:            record.ID,
 		Sender:        record.Sender,
 		CreatedAt:     record.CreatedAt,
+		ContentType:   record.ContentType,
 		Content:       record.Content,
 		Refs:          record.Refs,
 		Meta:          record.Meta,
 		ContentSchema: record.ContentSchema,
 	}
+}
+
+func MessageContentType(msg Message) string {
+	if msg.ContentType != "" {
+		return msg.ContentType
+	}
+	if t, ok := msg.Content["type"].(string); ok {
+		return t
+	}
+	return ""
 }
 
 func NormalizeTags(tags []string) []string {

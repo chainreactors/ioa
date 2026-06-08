@@ -5,12 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/chainreactors/ioa"
 	"github.com/chainreactors/ioa/client"
 	"github.com/chainreactors/ioa/protocols"
+	"github.com/chainreactors/ioa/skills"
 	goflags "github.com/jessevdk/go-flags"
+
+	_ "github.com/chainreactors/ioa/protocols/checkpoint"
+	_ "github.com/chainreactors/ioa/protocols/handoff"
+	_ "github.com/chainreactors/ioa/protocols/swarm"
+	_ "github.com/chainreactors/ioa/protocols/team"
 )
 
 type options struct {
@@ -18,10 +25,19 @@ type options struct {
 	Token    string `long:"token" env:"IOA_TOKEN" description:"Auth token for authenticated requests"`
 	NodeName string `long:"name" env:"IOA_NODE_NAME" description:"Node name for auto-registration" default:"ioa-client"`
 
+	Init     initCmd     `command:"init" description:"Export protocol skills and schemas to .agent/skills/"`
 	Register registerCmd `command:"register" description:"Register a new node and obtain a token"`
 	Space    spaceCmd    `command:"space" description:"Create or join a space"`
 	Send     sendCmd     `command:"send" description:"Send a message to a space"`
 	Read     readCmd     `command:"read" description:"Read messages from a space"`
+}
+
+type initCmd struct {
+	Output string `long:"output" short:"o" description:"Output directory" default:".agent/skills"`
+
+	Positional struct {
+		Skills []string `positional-arg-name:"skill" description:"Skill names to export (default: all)"`
+	} `positional-args:"yes"`
 }
 
 type registerCmd struct {
@@ -39,11 +55,12 @@ type spaceCmd struct {
 
 type sendCmd struct {
 	SpaceID       string `long:"space" short:"s" description:"Space ID" required:"yes"`
+	ContentType   string `long:"content-type" short:"t" description:"Message content type (e.g. checkpoint, handoff, team, swarm)"`
 	Content       string `long:"content" short:"c" description:"Message content JSON"`
 	RefMsgs       string `long:"ref-messages" description:"Comma-separated message IDs to reference"`
 	RefNodes      string `long:"ref-nodes" description:"Comma-separated node IDs to target"`
 	Meta          string `long:"meta" description:"Message metadata JSON"`
-	ContentSchema string `long:"content-schema" description:"JSON Schema for thread content validation"`
+	ContentSchema string `long:"content-schema" description:"JSON Schema for content (declarative, per-message)"`
 }
 
 type readCmd struct {
@@ -73,6 +90,14 @@ func main() {
 	if active == nil {
 		parser.WriteHelp(os.Stderr)
 		os.Exit(1)
+	}
+
+	if active.Name == "init" {
+		if err := runInit(opts.Init); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	var (
@@ -178,7 +203,7 @@ func runSendDispatch(ctx context.Context, c *client.Client, nodeName string, cmd
 	if err := json.Unmarshal([]byte(cmd.Content), &content); err != nil {
 		return fmt.Errorf("send: invalid content JSON: %s", err)
 	}
-	body := ioa.SendMessage{Content: content}
+	body := ioa.SendMessage{ContentType: cmd.ContentType, Content: content}
 	if cmd.RefMsgs != "" {
 		if body.Refs == nil {
 			body.Refs = &ioa.Ref{}
@@ -299,6 +324,60 @@ func writeJSON(v interface{}) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
+}
+
+func runInit(cmd initCmd) error {
+	all, err := skills.LoadAll()
+	if err != nil {
+		return err
+	}
+
+	requested := cmd.Positional.Skills
+	var toExport []skills.Skill
+	if len(requested) == 0 {
+		toExport = all
+	} else {
+		byName := make(map[string]skills.Skill, len(all))
+		for _, s := range all {
+			byName[s.Name] = s
+		}
+		for _, name := range requested {
+			s, ok := byName[name]
+			if !ok {
+				return fmt.Errorf("unknown skill: %s", name)
+			}
+			toExport = append(toExport, s)
+		}
+	}
+
+	for _, s := range toExport {
+		dir := filepath.Join(cmd.Output, s.Name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", dir, err)
+		}
+
+		body, err := skills.ReadSkill(s.Name)
+		if err == nil && body != "" {
+			raw, _ := skills.ReadSkillRaw(s.Name)
+			if len(raw) > 0 {
+				if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), raw, 0o644); err != nil {
+					return err
+				}
+			}
+		}
+
+		schemaRaw, err := skills.ReadSchemaRaw(s.Name)
+		if err == nil {
+			if err := os.WriteFile(filepath.Join(dir, "schema.json"), schemaRaw, 0o644); err != nil {
+				return err
+			}
+		}
+
+		fmt.Printf("  %s/ -> SKILL.md + schema.json\n", filepath.Join(cmd.Output, s.Name))
+	}
+
+	fmt.Printf("exported %d skills to %s\n", len(toExport), cmd.Output)
+	return nil
 }
 
 func splitComma(s string) []string {

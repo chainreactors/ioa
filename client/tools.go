@@ -175,6 +175,10 @@ func (t *SendTool) Definition() ioa.ToolDefinition {
 						"type":        "string",
 						"description": "IOA space id",
 					},
+					"content_type": map[string]interface{}{
+						"type":        "string",
+						"description": "Declares the message protocol type (e.g. checkpoint, handoff, team, swarm). Envelope-level field, not inside content body.",
+					},
 					"content": map[string]interface{}{
 						"type":        "object",
 						"description": "Structured message content",
@@ -186,7 +190,7 @@ func (t *SendTool) Definition() ioa.ToolDefinition {
 					},
 					"content_schema": map[string]interface{}{
 						"type":        "object",
-						"description": "Optional JSON Schema to set on the thread. Attaches to the thread's root message. All subsequent messages in the same thread must conform to this schema.",
+						"description": "Optional JSON Schema declaring the content structure of this message.",
 					},
 				},
 				"required": []string{"space_id", "content"},
@@ -198,6 +202,7 @@ func (t *SendTool) Definition() ioa.ToolDefinition {
 func (t *SendTool) Execute(ctx context.Context, arguments string) (string, error) {
 	var args struct {
 		SpaceID       string                 `json:"space_id"`
+		ContentType   string                 `json:"content_type"`
 		Content       map[string]interface{} `json:"content"`
 		Refs          *ioa.Ref               `json:"refs"`
 		Meta          map[string]interface{} `json:"meta"`
@@ -213,6 +218,7 @@ func (t *SendTool) Execute(ctx context.Context, arguments string) (string, error
 		return "", fmt.Errorf("content is required")
 	}
 	message, err := t.base.client.Send(ctx, args.SpaceID, ioa.SendMessage{
+		ContentType:   args.ContentType,
 		Content:       args.Content,
 		Refs:          args.Refs,
 		Meta:          args.Meta,

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/skills"
 )
 
 type SwarmMessage struct {
@@ -13,19 +14,16 @@ type SwarmMessage struct {
 }
 
 func SwarmSchema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"content": map[string]any{"type": "string"},
-			"targets": map[string]any{
-				"type":  "array",
-				"items": map[string]any{"type": "string"},
-			},
-			"meta": map[string]any{"type": "object"},
-		},
-		"required":             []string{"content"},
-		"additionalProperties": true,
+	s, err := skills.ReadSchema("swarm")
+	if err != nil {
+		return map[string]any{
+			"type":                 "object",
+			"properties":          map[string]any{"content": map[string]any{"type": "string"}},
+			"required":            []string{"content"},
+			"additionalProperties": true,
+		}
 	}
+	return s
 }
 
 func ParseSwarm(content map[string]any) (SwarmMessage, bool) {
@@ -65,7 +63,7 @@ func ParseLegacyMessage(content map[string]any) (SwarmMessage, bool) {
 }
 
 func SwarmContent(msg SwarmMessage) map[string]any {
-	m := map[string]any{"type": "message", "content": msg.Content}
+	m := map[string]any{"content": msg.Content}
 	if len(msg.Targets) > 0 {
 		m["targets"] = msg.Targets
 	}

@@ -54,6 +54,7 @@ type messageModel struct {
 	SpaceID           string `gorm:"column:space_id;not null;index:idx_messages_space_seq,priority:1"`
 	Sender            string `gorm:"column:sender;not null"`
 	CreatedAt         string `gorm:"column:created_at"`
+	ContentType       string `gorm:"column:content_type"`
 	ContentJSON       string `gorm:"column:content_json;not null"`
 	RefsJSON          string `gorm:"column:refs_json;not null"`
 	MetaJSON          string `gorm:"column:meta_json"`
@@ -232,38 +233,6 @@ func (s *SQLiteStore) GetSpace(spaceID string) (ioa.Space, bool, error) {
 	}
 	space, err := model.toSpace()
 	return space, err == nil, err
-}
-
-func (s *SQLiteStore) SetContentSchema(spaceID, rootMessageID string, schema map[string]interface{}) error {
-	encoded := ""
-	if schema != nil {
-		data, err := encodeJSON(schema)
-		if err != nil {
-			return err
-		}
-		encoded = data
-	}
-	return s.db.Model(&messageModel{}).
-		Where("id = ? AND space_id = ?", rootMessageID, spaceID).
-		Update("content_schema_json", encoded).Error
-}
-
-func (s *SQLiteStore) GetContentSchema(spaceID, rootMessageID string) (map[string]interface{}, error) {
-	var model messageModel
-	if err := s.db.Select("content_schema_json").Where("id = ? AND space_id = ?", rootMessageID, spaceID).First(&model).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	if strings.TrimSpace(model.ContentSchemaJSON) == "" {
-		return nil, nil
-	}
-	var schema map[string]interface{}
-	if err := decodeJSON(model.ContentSchemaJSON, &schema); err != nil {
-		return nil, err
-	}
-	return schema, nil
 }
 
 func (s *SQLiteStore) JoinSpace(spaceID, nodeID, description string) error {
@@ -516,6 +485,7 @@ func makeMessageModel(message ioa.MessageRecord) (messageModel, error) {
 		SpaceID:           message.SpaceID,
 		Sender:            message.Sender,
 		CreatedAt:         message.CreatedAt,
+		ContentType:       message.ContentType,
 		ContentJSON:       content,
 		RefsJSON:          refs,
 		MetaJSON:          metaJSON,
@@ -525,11 +495,12 @@ func makeMessageModel(message ioa.MessageRecord) (messageModel, error) {
 
 func (m messageModel) toMessage() (ioa.MessageRecord, error) {
 	message := ioa.MessageRecord{
-		ID:        m.ID,
-		SpaceID:   m.SpaceID,
-		Sender:    m.Sender,
-		CreatedAt: m.CreatedAt,
-		Content:   map[string]interface{}{},
+		ID:          m.ID,
+		SpaceID:     m.SpaceID,
+		Sender:      m.Sender,
+		CreatedAt:   m.CreatedAt,
+		ContentType: m.ContentType,
+		Content:     map[string]interface{}{},
 	}
 	if err := decodeJSON(m.ContentJSON, &message.Content); err != nil {
 		return ioa.MessageRecord{}, err
