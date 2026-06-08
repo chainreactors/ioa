@@ -39,12 +39,11 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 	if err != nil {
 		return err
 	}
-	if opts.AccessKey == "" {
-		return fmt.Errorf("--access-key is required")
-	}
 	service := NewService(store, opts.AccessKey)
 	var handler http.Handler = NewHandler(service)
-	handler = AuthMiddleware(service)(handler)
+	if opts.AccessKey != "" {
+		handler = AuthMiddleware(service)(handler)
+	}
 	if opts.Middleware != nil {
 		handler = opts.Middleware(handler, service)
 	}

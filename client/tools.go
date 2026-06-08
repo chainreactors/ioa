@@ -11,7 +11,7 @@ import (
 
 type API interface {
 	NodeID() string
-	RegisterNode(ctx context.Context, name string, meta map[string]interface{}) (ioa.Node, error)
+	RegisterNode(ctx context.Context, name, description string, meta map[string]interface{}) (ioa.Node, error)
 	Space(ctx context.Context, name, description string, tags ...string) (ioa.SpaceInfo, error)
 	Send(ctx context.Context, spaceID string, body ioa.SendMessage) (ioa.Message, error)
 	Read(ctx context.Context, spaceID string, opts ioa.ReadOptions) ([]ioa.Message, error)
@@ -23,8 +23,9 @@ type StreamAPI interface {
 }
 
 type ToolOptions struct {
-	NodeName string
-	NodeMeta map[string]interface{}
+	NodeName        string
+	NodeDescription string
+	NodeMeta        map[string]interface{}
 }
 
 func NewTools(client API, opts ToolOptions) []Tool {
@@ -66,7 +67,7 @@ func (b *toolBase) ensureNode(ctx context.Context) error {
 	if meta == nil {
 		meta = map[string]interface{}{}
 	}
-	_, err := b.client.RegisterNode(ctx, name, meta)
+	_, err := b.client.RegisterNode(ctx, name, b.opts.NodeDescription, meta)
 	return err
 }
 
@@ -179,9 +180,13 @@ func (t *SendTool) Definition() ioa.ToolDefinition {
 						"description": "Structured message content",
 					},
 					"refs": refSchema(),
+					"meta": map[string]interface{}{
+						"type":        "object",
+						"description": "Optional metadata for the message (e.g. kind, labels, ttl). Not part of content; used for routing, filtering, and lifecycle.",
+					},
 					"content_schema": map[string]interface{}{
 						"type":        "object",
-						"description": "Optional JSON Schema to set on the space. All subsequent messages must have content conforming to this schema.",
+						"description": "Optional JSON Schema to set on the thread. Attaches to the thread's root message. All subsequent messages in the same thread must conform to this schema.",
 					},
 				},
 				"required": []string{"space_id", "content"},
@@ -195,6 +200,7 @@ func (t *SendTool) Execute(ctx context.Context, arguments string) (string, error
 		SpaceID       string                 `json:"space_id"`
 		Content       map[string]interface{} `json:"content"`
 		Refs          *ioa.Ref               `json:"refs"`
+		Meta          map[string]interface{} `json:"meta"`
 		ContentSchema map[string]interface{} `json:"content_schema"`
 	}
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
@@ -209,6 +215,7 @@ func (t *SendTool) Execute(ctx context.Context, arguments string) (string, error
 	message, err := t.base.client.Send(ctx, args.SpaceID, ioa.SendMessage{
 		Content:       args.Content,
 		Refs:          args.Refs,
+		Meta:          args.Meta,
 		ContentSchema: args.ContentSchema,
 	})
 	if err != nil {
