@@ -63,6 +63,22 @@ func Get(name string) *Protocol {
 	return nil
 }
 
+func SendHandler(name string) func(ctx context.Context, env *Env, args interface{}) (string, error) {
+	p := Get(name)
+	if p == nil || p.Send == nil {
+		return nil
+	}
+	return p.Send.Execute
+}
+
+func ReadHandler(name string) func(ctx context.Context, env *Env, args interface{}) (string, error) {
+	p := Get(name)
+	if p == nil || p.Read == nil {
+		return nil
+	}
+	return p.Read.Execute
+}
+
 func ParseArgs(args interface{}, dst interface{}) {
 	b, _ := json.Marshal(args)
 	_ = json.Unmarshal(b, dst)
