@@ -80,16 +80,3 @@ func SwarmFromIOA(msg ioa.Message) (SwarmMessage, bool) {
 	return ParseLegacyMessage(msg.Content)
 }
 
-func IsProfileMessage(raw ioa.Message, msg SwarmMessage) bool {
-	if kind, _ := msg.Meta["kind"].(string); kind == "node_profile" {
-		return true
-	}
-	if kind, _ := raw.Content["kind"].(string); kind == "node_profile" {
-		return true
-	}
-	if meta, ok := raw.Content["meta"].(map[string]any); ok {
-		kind, _ := meta["kind"].(string)
-		return kind == "node_profile"
-	}
-	return false
-}

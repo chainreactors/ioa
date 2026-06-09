@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
-	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -44,13 +42,14 @@ type Task struct {
 }
 
 type PeerMessage struct {
-	MessageID  string
-	Sender     string
-	Content    string
-	RawContent map[string]any
-	Targets    []string
-	Meta       map[string]any
-	Refs       ioa.Ref
+	MessageID   string
+	Sender      string
+	ContentType string
+	Content     string
+	RawContent  map[string]any
+	Targets     []string
+	Meta        map[string]any
+	Refs        ioa.Ref
 }
 
 func (t Task) Prompt() string {
@@ -94,12 +93,6 @@ type heartbeatConfig struct {
 	contextLimit int
 }
 
-type SkillRef struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Location    string `json:"location"`
-}
-
 type NodeConfig struct {
 	Client                ioaclient.StreamAPI
 	NodeName              string
@@ -109,25 +102,24 @@ type NodeConfig struct {
 	HeartbeatInterval     time.Duration
 	HeartbeatContextLimit int
 	Prompt                string
-	Skills                []string
-	SkillRefs             []SkillRef
-	Network               map[string]any
+	Meta                  map[string]any
 	OnTask                TaskHandler
 	OnPeer                func(PeerMessage) bool
 	OnHeartbeat           HeartbeatFunc
 	Logger                Logger
+	Head                  string
+	ForkDepth             int
 }
 
 type Node struct {
-	cfg           NodeConfig
-	mu            sync.Mutex
-	historical    map[string]struct{}
-	dispatched    map[string]struct{}
-	lastSeenID    string
-	rootMessageID string
-	spaceID       string
-	spaceName     string
-	runCtx        context.Context
+	cfg        NodeConfig
+	mu         sync.Mutex
+	historical map[string]struct{}
+	dispatched map[string]struct{}
+	lastSeenID string
+	spaceID    string
+	spaceName  string
+	runCtx     context.Context
 
 	pending []pendingTask
 }
@@ -173,12 +165,6 @@ func NewNode(cfg NodeConfig) *Node {
 	}
 }
 
-func (n *Node) RootMessageID() string {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.rootMessageID
-}
-
 func (n *Node) NodeID() string  { return n.cfg.Client.NodeID() }
 func (n *Node) SpaceID() string { return n.spaceID }
 
@@ -190,7 +176,7 @@ func (n *Node) Run(ctx context.Context) error {
 		return fmt.Errorf("task handler is required")
 	}
 	if n.cfg.Client.NodeID() == "" {
-		node, err := n.cfg.Client.RegisterNode(ctx, n.cfg.NodeName, "swarm worker", map[string]any{"client": "ioa-swarm"})
+		node, err := n.cfg.Client.RegisterNode(ctx, n.cfg.NodeName, n.cfg.SpaceDescription, n.cfg.Meta)
 		if err != nil {
 			return err
 		}
@@ -206,10 +192,6 @@ func (n *Node) Run(ctx context.Context) error {
 	n.spaceID = space.ID
 	n.spaceName = space.Name
 	n.cfg.Logger.Importantf("swarm status=listening space=%s name=%q node=%s", space.ID, space.Name, n.cfg.Client.NodeID())
-
-	if err := n.announceProfile(ctx); err != nil {
-		return err
-	}
 
 	n.runCtx = ctx
 
@@ -234,7 +216,14 @@ func (n *Node) Run(ctx context.Context) error {
 		}
 	}
 
-	messages, errs, cancel, err := n.cfg.Client.Subscribe(ctx, n.spaceID)
+	var subOpts []ioaclient.SubscribeOption
+	if n.cfg.Head != "" {
+		subOpts = append(subOpts, ioaclient.WithHead(n.cfg.Head))
+	}
+	if n.cfg.ForkDepth > 0 {
+		subOpts = append(subOpts, ioaclient.WithForkDepth(n.cfg.ForkDepth))
+	}
+	messages, errs, cancel, err := n.cfg.Client.Subscribe(ctx, n.spaceID, subOpts...)
 	if err != nil {
 		return err
 	}
@@ -292,54 +281,6 @@ func (n *Node) Run(ctx context.Context) error {
 	}
 }
 
-func (n *Node) announceProfile(ctx context.Context) error {
-	parts := []string{fmt.Sprintf("Node %s (%s) joined the swarm.", n.cfg.NodeName, n.cfg.Client.NodeID())}
-	if prompt := strings.TrimSpace(n.cfg.Prompt); prompt != "" {
-		parts = append(parts, "Intent: "+prompt)
-	}
-	if skills := cleanStrings(n.cfg.Skills); len(skills) > 0 {
-		parts = append(parts, "Skills: "+strings.Join(skills, ", "))
-	}
-	msg := SwarmMessage{
-		Content: strings.Join(parts, "\n"),
-		Meta:    n.buildMeta(),
-	}
-	sent, err := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{ContentType: "swarm", Content: SwarmContent(msg)})
-	if err != nil {
-		return err
-	}
-	n.mu.Lock()
-	n.rootMessageID = sent.ID
-	rootID := n.rootMessageID
-	n.mu.Unlock()
-	n.cfg.Logger.Infof("swarm root_message=%s node=%s", rootID, n.cfg.Client.NodeID())
-	return nil
-}
-
-func (n *Node) buildMeta() map[string]any {
-	meta := map[string]any{
-		"kind":      "node_profile",
-		"node_name": n.cfg.NodeName,
-	}
-	if n.cfg.Network != nil {
-		for k, v := range n.cfg.Network {
-			meta[k] = v
-		}
-	} else {
-		hostname, _ := os.Hostname()
-		meta["hostname"] = hostname
-		if addrs := localAddresses(); len(addrs) > 0 {
-			meta["addresses"] = addrs
-		}
-	}
-	if skills := cleanStrings(n.cfg.Skills); len(skills) > 0 {
-		meta["capabilities"] = skills
-	}
-	if len(n.cfg.SkillRefs) > 0 {
-		meta["skill_refs"] = n.cfg.SkillRefs
-	}
-	return meta
-}
 
 func (n *Node) catchUp(ctx context.Context, active **activeTask) error {
 	messages, err := n.cfg.Client.Read(ctx, n.spaceID, ioa.ReadOptions{
@@ -442,14 +383,13 @@ This node:
 - id: %s
 - name: %s
 - intent: %s
-- skills: %s
 
 Review the recent messages below and decide the next useful step.
 If this worker should act now, use the available local tools directly.
 If no action is needed, say that briefly and do not repeat completed work.
 
 Recent messages (oldest to newest):
-%s`, hb.name, hb.interval, n.spaceID, n.spaceName, n.cfg.Client.NodeID(), n.cfg.NodeName, intent, strings.Join(cleanStrings(n.cfg.Skills), ", "), contextView)
+%s`, hb.name, hb.interval, n.spaceID, n.spaceName, n.cfg.Client.NodeID(), n.cfg.NodeName, intent, contextView)
 }
 
 type slimEntry struct {
@@ -487,10 +427,6 @@ func SlimMessageContext(messages []ioa.Message, budgetBytes int) string {
 		}
 
 		maxPreview := 300
-		if kind == "node_profile" {
-			maxPreview = 80
-		}
-
 		preview := content
 		if len(preview) > maxPreview {
 			preview = preview[:maxPreview] + "..."
@@ -623,10 +559,16 @@ func formatErrorSuffix(counts map[string]int, latest string) string {
 }
 
 func (n *Node) routeIncoming(ctx context.Context, msg ioa.Message, active **activeTask) (bool, error) {
-	sm, ok := SwarmFromIOA(msg)
-	if IsProfileMessage(msg, sm) {
+	if ioa.MessageContentType(msg) == "ioa/fork" {
+		if *active != nil && n.cfg.OnPeer != nil {
+			peer := peerMessageFromIOA(msg, SwarmMessage{})
+			n.cfg.OnPeer(peer)
+		}
+		n.markDispatched(msg.ID)
 		return true, nil
 	}
+
+	sm, ok := SwarmFromIOA(msg)
 	if msg.Sender == n.cfg.Client.NodeID() {
 		return true, nil
 	}
@@ -641,12 +583,8 @@ func (n *Node) routeIncoming(ctx context.Context, msg ioa.Message, active **acti
 		return true, nil
 	}
 
-	n.mu.Lock()
-	rootID := n.rootMessageID
-	n.mu.Unlock()
-
 	isActive := *active != nil
-	if ok && isTaskMessage(msg, sm, nodeID, rootID, isActive) {
+	if ok && isTaskMessage(msg, sm, nodeID, isActive) {
 		if *active != nil {
 			n.markDispatched(msg.ID)
 			n.pending = append(n.pending, pendingTask{msg: msg, sm: sm})
@@ -771,29 +709,16 @@ func (n *Node) watermark() string {
 	return n.lastSeenID
 }
 
-func isTaskMessage(msg ioa.Message, sm SwarmMessage, nodeID, rootMessageID string, active bool) bool {
-	if len(msg.Refs.Nodes) > 0 {
-		if !slices.Contains(msg.Refs.Nodes, nodeID) {
-			return false
-		}
-	}
-
-	refsRoot := false
-	if len(msg.Refs.Messages) > 0 {
-		refsRoot = rootMessageID != "" && slices.Contains(msg.Refs.Messages, rootMessageID)
-		if !refsRoot {
-			return false
-		}
-	}
-
-	kind := MessageKind(msg, sm)
-	if kind == "task_dispatch" {
+func isTaskMessage(msg ioa.Message, sm SwarmMessage, nodeID string, active bool) bool {
+	if kind := MessageKind(msg, sm); kind == "task_dispatch" {
 		return true
-	}
-	if kind != "" || active {
+	} else if kind != "" || active {
 		return false
 	}
-	return len(msg.Refs.Nodes) > 0 || refsRoot || len(msg.Refs.Messages) == 0
+	if len(msg.Refs.Nodes) > 0 {
+		return slices.Contains(msg.Refs.Nodes, nodeID)
+	}
+	return len(msg.Refs.Messages) == 0
 }
 
 func MessageKind(msg ioa.Message, sm SwarmMessage) string {
@@ -812,13 +737,14 @@ func MessageKind(msg ioa.Message, sm SwarmMessage) string {
 
 func peerMessageFromIOA(msg ioa.Message, sm SwarmMessage) PeerMessage {
 	peer := PeerMessage{
-		MessageID:  msg.ID,
-		Sender:     msg.Sender,
-		Content:    sm.Content,
-		RawContent: cloneContent(msg.Content),
-		Targets:    sm.Targets,
-		Meta:       sm.Meta,
-		Refs:       msg.Refs,
+		MessageID:   msg.ID,
+		Sender:      msg.Sender,
+		ContentType: msg.ContentType,
+		Content:     sm.Content,
+		RawContent:  cloneContent(msg.Content),
+		Targets:     sm.Targets,
+		Meta:        sm.Meta,
+		Refs:        msg.Refs,
 	}
 	if len(peer.Targets) == 0 {
 		peer.Targets = parseTargets(msg.Content["targets"])
@@ -853,27 +779,6 @@ func parseTargets(raw any) []string {
 	return targets
 }
 
-func localAddresses() []string {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return nil
-	}
-	var result []string
-	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			result = append(result, addr.String())
-		}
-	}
-	return result
-}
-
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -881,19 +786,4 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-func cleanStrings(values []string) []string {
-	result := make([]string, 0, len(values))
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	return result
-}
+

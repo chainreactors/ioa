@@ -597,6 +597,29 @@ func (h *Handler) sse(w http.ResponseWriter, r *http.Request, spaceID, messageID
 		}
 	}
 
+	query := r.URL.Query()
+	headID := strings.TrimSpace(query.Get("head"))
+	forkDepth := 1
+	if raw := query.Get("fork_depth"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			forkDepth = n
+		}
+	}
+
+	var tracker *HeadTracker
+	if headID != "" {
+		if _, ok, err := h.service.Store().GetMessage(spaceID, headID); err != nil || !ok {
+			writeError(w, http.StatusUnprocessableEntity, "head message not found: "+headID)
+			return
+		}
+		var err error
+		tracker, err = NewHeadTracker(h.service.Store(), spaceID, headID, forkDepth)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to initialize head tracker")
+			return
+		}
+	}
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming is not supported")
@@ -611,6 +634,28 @@ func (h *Handler) sse(w http.ResponseWriter, r *http.Request, spaceID, messageID
 	ch, unsubscribe := h.service.Hub().Subscribe(spaceID)
 	defer unsubscribe()
 
+	seen := make(map[string]struct{})
+	if tracker != nil {
+		historical, _ := h.service.ReadMessages(r.Context(), spaceID, "", ioa.ReadOptions{All: true, After: headID})
+		for _, msg := range historical {
+			deliver, fork := tracker.Accept(msg)
+			if !deliver {
+				continue
+			}
+			data, err := json.Marshal(msg)
+			if err != nil {
+				continue
+			}
+			eventType := "message"
+			if fork {
+				eventType = "fork"
+			}
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
+			seen[msg.ID] = struct{}{}
+		}
+		flusher.Flush()
+	}
+
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
@@ -624,6 +669,27 @@ func (h *Handler) sse(w http.ResponseWriter, r *http.Request, spaceID, messageID
 		case msg, ok := <-ch:
 			if !ok {
 				return
+			}
+			if _, dup := seen[msg.ID]; dup {
+				delete(seen, msg.ID)
+				continue
+			}
+			if tracker != nil {
+				deliver, fork := tracker.Accept(msg)
+				if !deliver {
+					continue
+				}
+				data, err := json.Marshal(msg)
+				if err != nil {
+					continue
+				}
+				eventType := "message"
+				if fork {
+					eventType = "fork"
+				}
+				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
+				flusher.Flush()
+				continue
 			}
 			if messageID != "" {
 				related, err := h.service.IsRelated(r.Context(), spaceID, messageID, msg.ID)

@@ -19,7 +19,22 @@ type API interface {
 
 type StreamAPI interface {
 	API
-	Subscribe(ctx context.Context, spaceID string) (<-chan ioa.Message, <-chan error, func(), error)
+	Subscribe(ctx context.Context, spaceID string, opts ...SubscribeOption) (<-chan ioa.Message, <-chan error, func(), error)
+}
+
+type subscribeConfig struct {
+	Head      string
+	ForkDepth int
+}
+
+type SubscribeOption func(*subscribeConfig)
+
+func WithHead(messageID string) SubscribeOption {
+	return func(c *subscribeConfig) { c.Head = messageID }
+}
+
+func WithForkDepth(depth int) SubscribeOption {
+	return func(c *subscribeConfig) { c.ForkDepth = depth }
 }
 
 type ToolOptions struct {

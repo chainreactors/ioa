@@ -190,9 +190,24 @@ func (c *Client) Read(ctx context.Context, spaceID string, opts ioa.ReadOptions)
 	return messages, nil
 }
 
-func (c *Client) Subscribe(ctx context.Context, spaceID string) (<-chan ioa.Message, <-chan error, func(), error) {
+func (c *Client) Subscribe(ctx context.Context, spaceID string, opts ...SubscribeOption) (<-chan ioa.Message, <-chan error, func(), error) {
 	target := *c.baseURL
 	target.Path = path.Join(c.baseURL.Path, "/spaces/"+url.PathEscape(spaceID)+"/sse")
+
+	var cfg subscribeConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	if cfg.Head != "" || cfg.ForkDepth > 0 {
+		q := target.Query()
+		if cfg.Head != "" {
+			q.Set("head", cfg.Head)
+		}
+		if cfg.ForkDepth > 0 {
+			q.Set("fork_depth", strconv.Itoa(cfg.ForkDepth))
+		}
+		target.RawQuery = q.Encode()
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
@@ -234,6 +249,7 @@ func (c *Client) Subscribe(ctx context.Context, spaceID string) (<-chan ioa.Mess
 
 		scanner := bufio.NewScanner(resp.Body)
 		var data strings.Builder
+		var eventType string
 		for scanner.Scan() {
 			select {
 			case <-done:
@@ -248,6 +264,9 @@ func (c *Client) Subscribe(ctx context.Context, spaceID string) (<-chan ioa.Mess
 						errs <- err
 						return
 					}
+					if eventType == "fork" {
+						msg.ContentType = "ioa/fork"
+					}
 					select {
 					case messages <- msg:
 					case <-done:
@@ -256,10 +275,15 @@ func (c *Client) Subscribe(ctx context.Context, spaceID string) (<-chan ioa.Mess
 						return
 					}
 					data.Reset()
+					eventType = ""
 				}
 				continue
 			}
-			if strings.HasPrefix(line, ":") || strings.HasPrefix(line, "event:") {
+			if strings.HasPrefix(line, ":") {
+				continue
+			}
+			if strings.HasPrefix(line, "event:") {
+				eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 				continue
 			}
 			if strings.HasPrefix(line, "data:") {
