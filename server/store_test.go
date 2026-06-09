@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
 )
 
@@ -14,19 +13,19 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	ctx := context.Background()
 	service := NewService(store, "")
 
-	nodeA, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-a"})
+	nodeA, err := service.RegisterNode(ctx, protocols.NodeCreate{Name: "agent-a"})
 	if err != nil {
 		t.Fatalf("RegisterNode(a) error = %v", err)
 	}
 	if nodeA.Meta == nil || len(nodeA.Meta) != 0 {
 		t.Fatalf("nodeA meta = %#v, want empty map", nodeA.Meta)
 	}
-	nodeB, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-b"})
+	nodeB, err := service.RegisterNode(ctx, protocols.NodeCreate{Name: "agent-b"})
 	if err != nil {
 		t.Fatalf("RegisterNode(b) error = %v", err)
 	}
 
-	space, err := service.CreateSpace(ctx, nodeA.ID, api.SpaceCreate{
+	space, err := service.CreateSpace(ctx, nodeA.ID, protocols.SpaceCreate{
 		Name:        "case",
 		Description: "owner",
 		Tags:        []string{"workspace:aide", "aide", "workspace:aide"},
@@ -34,7 +33,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	if err != nil {
 		t.Fatalf("CreateSpace() error = %v", err)
 	}
-	same, err := service.CreateSpace(ctx, nodeB.ID, api.SpaceCreate{
+	same, err := service.CreateSpace(ctx, nodeB.ID, protocols.SpaceCreate{
 		Name:        "case",
 		Description: "reviewer",
 		Tags:        []string{"checkpoint"},
@@ -188,11 +187,11 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	ctx := context.Background()
 	service := NewService(store, "")
 
-	node, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent"})
+	node, err := service.RegisterNode(ctx, protocols.NodeCreate{Name: "agent"})
 	if err != nil {
 		t.Fatalf("RegisterNode error = %v", err)
 	}
-	space, err := service.CreateSpace(ctx, node.ID, api.SpaceCreate{Name: "schema-test", Description: "tester"})
+	space, err := service.CreateSpace(ctx, node.ID, protocols.SpaceCreate{Name: "schema-test", Description: "tester"})
 	if err != nil {
 		t.Fatalf("CreateSpace error = %v", err)
 	}
@@ -274,27 +273,27 @@ func runProjectionTest(t *testing.T, store Store) {
 	ctx := context.Background()
 	service := NewService(store, "")
 
-	nodeA, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-a"})
+	nodeA, err := service.RegisterNode(ctx, protocols.NodeCreate{Name: "agent-a"})
 	if err != nil {
 		t.Fatalf("RegisterNode(a) error = %v", err)
 	}
-	nodeB, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-b"})
+	nodeB, err := service.RegisterNode(ctx, protocols.NodeCreate{Name: "agent-b"})
 	if err != nil {
 		t.Fatalf("RegisterNode(b) error = %v", err)
 	}
-	nodeC, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-c"})
+	nodeC, err := service.RegisterNode(ctx, protocols.NodeCreate{Name: "agent-c"})
 	if err != nil {
 		t.Fatalf("RegisterNode(c) error = %v", err)
 	}
 
-	space, err := service.CreateSpace(ctx, nodeA.ID, api.SpaceCreate{Name: "case", Description: "owner"})
+	space, err := service.CreateSpace(ctx, nodeA.ID, protocols.SpaceCreate{Name: "case", Description: "owner"})
 	if err != nil {
 		t.Fatalf("CreateSpace(case) error = %v", err)
 	}
-	if _, err := service.CreateSpace(ctx, nodeB.ID, api.SpaceCreate{Name: "case", Description: "reviewer"}); err != nil {
+	if _, err := service.CreateSpace(ctx, nodeB.ID, protocols.SpaceCreate{Name: "case", Description: "reviewer"}); err != nil {
 		t.Fatalf("CreateSpace(join case) error = %v", err)
 	}
-	otherSpace, err := service.CreateSpace(ctx, nodeC.ID, api.SpaceCreate{Name: "other", Description: "observer"})
+	otherSpace, err := service.CreateSpace(ctx, nodeC.ID, protocols.SpaceCreate{Name: "other", Description: "observer"})
 	if err != nil {
 		t.Fatalf("CreateSpace(other) error = %v", err)
 	}
@@ -322,35 +321,35 @@ func runProjectionTest(t *testing.T, store Store) {
 		t.Fatalf("SendMessage(other) error = %v", err)
 	}
 
-	all, err := service.ListMessages(ctx, api.MessageFilter{})
+	all, err := service.ListMessages(ctx, protocols.MessageFilter{})
 	if err != nil {
 		t.Fatalf("ListMessages(all) error = %v", err)
 	}
 	if len(all) != 4 || !containsRecordID(all, other.ID) {
 		t.Fatalf("ListMessages(all) = %#v, want four cross-space messages", recordIDs(all))
 	}
-	scoped, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID})
+	scoped, err := service.ListMessages(ctx, protocols.MessageFilter{SpaceID: space.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(space) error = %v", err)
 	}
 	if got := recordIDs(scoped); !reflect.DeepEqual(got, []string{root.ID, directed.ID, child.ID}) {
 		t.Fatalf("ListMessages(space) ids = %#v, want root,directed,child", got)
 	}
-	connectedToB, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID, NodeID: nodeB.ID})
+	connectedToB, err := service.ListMessages(ctx, protocols.MessageFilter{SpaceID: space.ID, NodeID: nodeB.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(node_id) error = %v", err)
 	}
 	if got := recordIDs(connectedToB); !reflect.DeepEqual(got, []string{directed.ID, child.ID}) {
 		t.Fatalf("ListMessages(node_id) ids = %#v, want directed,child", got)
 	}
-	refMessage, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
+	refMessage, err := service.ListMessages(ctx, protocols.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(ref_message) error = %v", err)
 	}
 	if got := recordIDs(refMessage); !reflect.DeepEqual(got, []string{child.ID}) {
 		t.Fatalf("ListMessages(ref_message) ids = %#v, want child", got)
 	}
-	refNode, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID, RefNode: nodeB.ID})
+	refNode, err := service.ListMessages(ctx, protocols.MessageFilter{SpaceID: space.ID, RefNode: nodeB.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(ref_node) error = %v", err)
 	}

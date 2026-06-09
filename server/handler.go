@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
 )
 
@@ -51,7 +50,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //	@Tags			system
 //	@Produce		json
 //	@Success		200	{object}	map[string]string	"Server is ready"
-//	@Failure		503	{object}	api.ErrorResponse	"Server is not ready"
+//	@Failure		503	{object}	protocols.ErrorResponse	"Server is not ready"
 //	@Router			/health [get]
 //	@Router			/ready [get]
 func (h *Handler) health(w http.ResponseWriter, r *http.Request, segments []string) {
@@ -79,7 +78,7 @@ func (h *Handler) serveAuth(w http.ResponseWriter, r *http.Request, segments []s
 }
 
 func (h *Handler) authRegister(w http.ResponseWriter, r *http.Request) {
-	var body api.AuthRegister
+	var body protocols.AuthRegister
 	if !decodeJSON(w, r, &body) {
 		return
 	}
@@ -135,13 +134,13 @@ func (h *Handler) serveMessages(w http.ResponseWriter, r *http.Request, segments
 //	@Tags			nodes
 //	@Accept			json
 //	@Produce		json
-//	@Param			body	body		api.NodeCreate		true	"Node registration payload"
+//	@Param			body	body		protocols.NodeCreate		true	"Node registration payload"
 //	@Success		201		{object}	protocols.Node			"Created node"
-//	@Failure		422		{object}	api.ErrorResponse	"Invalid request body"
-//	@Failure		500		{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		422		{object}	protocols.ErrorResponse	"Invalid request body"
+//	@Failure		500		{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/nodes [post]
 func (h *Handler) registerNode(w http.ResponseWriter, r *http.Request) {
-	var body api.NodeCreate
+	var body protocols.NodeCreate
 	if !decodeJSON(w, r, &body) {
 		return
 	}
@@ -160,7 +159,7 @@ func (h *Handler) registerNode(w http.ResponseWriter, r *http.Request) {
 //	@Tags			nodes
 //	@Produce		json
 //	@Success		200	{array}		protocols.Node			"List of nodes"
-//	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		500	{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/nodes [get]
 func (h *Handler) listNodes(w http.ResponseWriter, r *http.Request) {
 	nodes, err := h.service.ListNodes(r.Context())
@@ -179,8 +178,8 @@ func (h *Handler) listNodes(w http.ResponseWriter, r *http.Request) {
 //	@Produce		json
 //	@Param			nodeID	path		string				true	"Node ID"
 //	@Success		200		{object}	protocols.Node			"Node details"
-//	@Failure		404		{object}	api.ErrorResponse	"Node not found"
-//	@Failure		500		{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		404		{object}	protocols.ErrorResponse	"Node not found"
+//	@Failure		500		{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/nodes/{nodeID} [get]
 func (h *Handler) getNode(w http.ResponseWriter, r *http.Request, nodeID string) {
 	node, err := h.service.GetNode(r.Context(), nodeID)
@@ -201,9 +200,9 @@ func (h *Handler) getNode(w http.ResponseWriter, r *http.Request, nodeID string)
 //	@Param			after	query		string				false	"Pagination cursor: return messages after this ID"
 //	@Param			limit	query		int					false	"Maximum number of messages to return"
 //	@Success		200		{array}		protocols.Message	"List of inbox messages (includes space_id)"
-//	@Failure		404		{object}	api.ErrorResponse	"Node not found"
-//	@Failure		422		{object}	api.ErrorResponse	"Invalid query parameters"
-//	@Failure		500		{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		404		{object}	protocols.ErrorResponse	"Node not found"
+//	@Failure		422		{object}	protocols.ErrorResponse	"Invalid query parameters"
+//	@Failure		500		{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/nodes/{nodeID}/inbox [get]
 func (h *Handler) getInbox(w http.ResponseWriter, r *http.Request, nodeID string) {
 	opts, ok := readOptionsFromRequest(w, r)
@@ -226,8 +225,8 @@ func (h *Handler) getInbox(w http.ResponseWriter, r *http.Request, nodeID string
 //	@Produce		text/event-stream
 //	@Param			nodeID	path	string	true	"Node ID"
 //	@Success		200		"SSE stream of protocols.Message events"
-//	@Failure		404		{object}	api.ErrorResponse	"Node not found"
-//	@Failure		500		{object}	api.ErrorResponse	"Streaming not supported"
+//	@Failure		404		{object}	protocols.ErrorResponse	"Node not found"
+//	@Failure		500		{object}	protocols.ErrorResponse	"Streaming not supported"
 //	@Router			/nodes/{nodeID}/sse [get]
 func (h *Handler) sseNode(w http.ResponseWriter, r *http.Request, nodeID string) {
 	if _, err := h.service.GetNode(r.Context(), nodeID); err != nil {
@@ -288,9 +287,9 @@ func (h *Handler) sseNode(w http.ResponseWriter, r *http.Request, nodeID string)
 //	@Param			after		query		string				false	"Pagination cursor: return messages after this ID"
 //	@Param			limit		query		int					false	"Maximum number of messages to return"
 //	@Success		200			{array}		protocols.Message	"List of messages"
-//	@Failure		404			{object}	api.ErrorResponse	"Filter target not found"
-//	@Failure		422			{object}	api.ErrorResponse	"Invalid query parameters"
-//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		404			{object}	protocols.ErrorResponse	"Filter target not found"
+//	@Failure		422			{object}	protocols.ErrorResponse	"Invalid query parameters"
+//	@Failure		500			{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/messages [get]
 func (h *Handler) listMessages(w http.ResponseWriter, r *http.Request) {
 	filter, ok := messageFilterFromRequest(w, r)
@@ -360,13 +359,13 @@ func (h *Handler) serveSpaces(w http.ResponseWriter, r *http.Request, segments [
 //	@Accept			json
 //	@Produce		json
 //	@Param			x-node-id	header		string				false	"Caller node ID"
-//	@Param			body		body		api.SpaceCreate		true	"Space creation payload"
+//	@Param			body		body		protocols.SpaceCreate		true	"Space creation payload"
 //	@Success		200			{object}	protocols.SpaceInfo		"Space info"
-//	@Failure		422			{object}	api.ErrorResponse	"Invalid request body"
-//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		422			{object}	protocols.ErrorResponse	"Invalid request body"
+//	@Failure		500			{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/spaces [post]
 func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request) {
-	var body api.SpaceCreate
+	var body protocols.SpaceCreate
 	if !decodeJSON(w, r, &body) {
 		return
 	}
@@ -385,7 +384,7 @@ func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request) {
 //	@Tags			spaces
 //	@Produce		json
 //	@Success		200	{array}		protocols.SpaceInfo		"List of spaces"
-//	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		500	{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/spaces [get]
 func (h *Handler) listSpaces(w http.ResponseWriter, r *http.Request) {
 	spaces, err := h.service.ListSpaces(r.Context())
@@ -404,8 +403,8 @@ func (h *Handler) listSpaces(w http.ResponseWriter, r *http.Request) {
 //	@Produce		json
 //	@Param			spaceID	path		string				true	"Space ID"
 //	@Success		200		{object}	protocols.SpaceInfo		"Space details"
-//	@Failure		404		{object}	api.ErrorResponse	"Space not found"
-//	@Failure		500		{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		404		{object}	protocols.ErrorResponse	"Space not found"
+//	@Failure		500		{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/spaces/{spaceID} [get]
 func (h *Handler) getSpace(w http.ResponseWriter, r *http.Request, spaceID string) {
 	info, err := h.service.GetSpace(r.Context(), spaceID)
@@ -427,9 +426,9 @@ func (h *Handler) getSpace(w http.ResponseWriter, r *http.Request, spaceID strin
 //	@Param			x-node-id	header		string				false	"Caller node ID (sender)"
 //	@Param			body		body		protocols.SendMessage		true	"Message payload"
 //	@Success		201			{object}	protocols.Message			"Created message"
-//	@Failure		404			{object}	api.ErrorResponse	"Space not found"
-//	@Failure		422			{object}	api.ErrorResponse	"Invalid request body"
-//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		404			{object}	protocols.ErrorResponse	"Space not found"
+//	@Failure		422			{object}	protocols.ErrorResponse	"Invalid request body"
+//	@Failure		500			{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/spaces/{spaceID}/messages [post]
 func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request, spaceID string) {
 	var body protocols.SendMessage
@@ -457,9 +456,9 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request, spaceID st
 //	@Param			limit		query		int					false	"Maximum number of messages to return"
 //	@Param			all			query		bool				false	"If true, return all messages ignoring node filtering"
 //	@Success		200			{array}		protocols.Message			"List of messages"
-//	@Failure		404			{object}	api.ErrorResponse	"Space not found"
-//	@Failure		422			{object}	api.ErrorResponse	"Invalid query parameters"
-//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
+//	@Failure		404			{object}	protocols.ErrorResponse	"Space not found"
+//	@Failure		422			{object}	protocols.ErrorResponse	"Invalid query parameters"
+//	@Failure		500			{object}	protocols.ErrorResponse	"Internal server error"
 //	@Router			/spaces/{spaceID}/messages [get]
 func (h *Handler) readMessages(w http.ResponseWriter, r *http.Request, spaceID string) {
 	opts, ok := readOptionsFromRequest(w, r)
@@ -482,8 +481,8 @@ func (h *Handler) readMessages(w http.ResponseWriter, r *http.Request, spaceID s
 //	@Produce		text/event-stream
 //	@Param			spaceID	path	string	true	"Space ID"
 //	@Success		200		"SSE stream of protocols.Message events"
-//	@Failure		404		{object}	api.ErrorResponse	"Space not found"
-//	@Failure		500		{object}	api.ErrorResponse	"Streaming not supported"
+//	@Failure		404		{object}	protocols.ErrorResponse	"Space not found"
+//	@Failure		500		{object}	protocols.ErrorResponse	"Streaming not supported"
 //	@Router			/spaces/{spaceID}/sse [get]
 func (h *Handler) sseSpace(w http.ResponseWriter, r *http.Request, spaceID string) {
 	h.sse(w, r, spaceID, "")
@@ -498,8 +497,8 @@ func (h *Handler) sseSpace(w http.ResponseWriter, r *http.Request, spaceID strin
 //	@Param			spaceID		path	string	true	"Space ID"
 //	@Param			messageID	path	string	true	"Message ID to filter related events"
 //	@Success		200			"SSE stream of related protocols.Message events"
-//	@Failure		404			{object}	api.ErrorResponse	"Space or message not found"
-//	@Failure		500			{object}	api.ErrorResponse	"Streaming not supported"
+//	@Failure		404			{object}	protocols.ErrorResponse	"Space or message not found"
+//	@Failure		500			{object}	protocols.ErrorResponse	"Streaming not supported"
 //	@Router			/spaces/{spaceID}/messages/{messageID}/sse [get]
 func (h *Handler) sseMessage(w http.ResponseWriter, r *http.Request, spaceID, messageID string) {
 	h.sse(w, r, spaceID, messageID)
@@ -652,9 +651,9 @@ func readOptionsFromRequest(w http.ResponseWriter, r *http.Request) (protocols.R
 	return opts, true
 }
 
-func messageFilterFromRequest(w http.ResponseWriter, r *http.Request) (api.MessageFilter, bool) {
+func messageFilterFromRequest(w http.ResponseWriter, r *http.Request) (protocols.MessageFilter, bool) {
 	query := r.URL.Query()
-	filter := api.MessageFilter{
+	filter := protocols.MessageFilter{
 		SpaceID:    strings.TrimSpace(query.Get("space_id")),
 		MessageID:  strings.TrimSpace(query.Get("message_id")),
 		NodeID:     strings.TrimSpace(query.Get("node_id")),
@@ -666,7 +665,7 @@ func messageFilterFromRequest(w http.ResponseWriter, r *http.Request) (api.Messa
 	if query.Get("limit") != "" {
 		limit, ok := positiveIntQuery(w, query.Get("limit"), "limit")
 		if !ok {
-			return api.MessageFilter{}, false
+			return protocols.MessageFilter{}, false
 		}
 		filter.Limit = limit
 	}
@@ -711,7 +710,7 @@ func writeServiceError(w http.ResponseWriter, err error) {
 func writeError(w http.ResponseWriter, status int, detail string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(api.ErrorResponse{Detail: detail})
+	_ = json.NewEncoder(w).Encode(protocols.ErrorResponse{Detail: detail})
 }
 
 func pathSegments(path string) []string {

@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
 	_ "modernc.org/sqlite"
 )
@@ -365,7 +364,7 @@ func (s *SQLiteStore) GetInboxMessages(nodeID, after string, limit int) ([]proto
 	return WindowMessages(filtered, allMessages, after, limit), nil
 }
 
-func (s *SQLiteStore) ListMessages(filter api.MessageFilter) ([]protocols.Message, error) {
+func (s *SQLiteStore) ListMessages(filter protocols.MessageFilter) ([]protocols.Message, error) {
 	query := `SELECT id,space_id,sender,COALESCE(created_at,''),COALESCE(content_type,''),
 	                 content_json,refs_json,COALESCE(meta_json,''),COALESCE(content_schema_json,'')
 	          FROM messages`

@@ -80,3 +80,17 @@ func SwarmFromIOA(msg protocols.Message) (SwarmMessage, bool) {
 	return ParseLegacyMessage(msg.Content)
 }
 
+func MessageKind(msg protocols.Message, sm SwarmMessage) string {
+	if kind, _ := sm.Meta["kind"].(string); kind != "" {
+		return kind
+	}
+	if kind, _ := msg.Content["kind"].(string); kind != "" {
+		return kind
+	}
+	if meta, ok := msg.Content["meta"].(map[string]any); ok {
+		kind, _ := meta["kind"].(string)
+		return kind
+	}
+	return ""
+}
+

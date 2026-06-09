@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
 )
 
@@ -53,11 +52,11 @@ func (c *Client) NodeID() string {
 	return c.nodeID
 }
 
-func (c *Client) Register(ctx context.Context, accessKey, name, description string, meta map[string]interface{}) (api.AuthResponse, error) {
-	body := api.AuthRegister{Name: name, Description: description, AccessKey: accessKey, Meta: meta}
-	var resp api.AuthResponse
+func (c *Client) Register(ctx context.Context, accessKey, name, description string, meta map[string]interface{}) (protocols.AuthResponse, error) {
+	body := protocols.AuthRegister{Name: name, Description: description, AccessKey: accessKey, Meta: meta}
+	var resp protocols.AuthResponse
 	if err := c.do(ctx, http.MethodPost, "/auth/register", nil, body, &resp); err != nil {
-		return api.AuthResponse{}, err
+		return protocols.AuthResponse{}, err
 	}
 	c.token = resp.Token
 	c.nodeID = resp.ID
@@ -81,7 +80,7 @@ func (c *Client) ListNodes(ctx context.Context) ([]protocols.Node, error) {
 	return nodes, nil
 }
 
-func (c *Client) ListMessages(ctx context.Context, filter api.MessageFilter) ([]protocols.Message, error) {
+func (c *Client) ListMessages(ctx context.Context, filter protocols.MessageFilter) ([]protocols.Message, error) {
 	endpoint := endpointWithQuery("/messages", messageFilterValues(filter))
 	var messages []protocols.Message
 	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &messages); err != nil {
@@ -128,7 +127,7 @@ func (c *Client) ReadPublic(ctx context.Context, spaceID string, opts protocols.
 
 func (c *Client) RegisterNode(ctx context.Context, name, description string, meta map[string]interface{}) (protocols.Node, error) {
 	var node protocols.Node
-	if err := c.do(ctx, http.MethodPost, "/nodes", nil, api.NodeCreate{Name: name, Description: description, Meta: meta}, &node); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/nodes", nil, protocols.NodeCreate{Name: name, Description: description, Meta: meta}, &node); err != nil {
 		return protocols.Node{}, err
 	}
 	c.nodeID = node.ID
@@ -144,7 +143,7 @@ func (c *Client) Space(ctx context.Context, name, description string, tags ...st
 		headers["X-Access-Key"] = c.accessKey
 	}
 	var info protocols.SpaceInfo
-	if err := c.do(ctx, http.MethodPost, "/spaces", headers, api.SpaceCreate{Name: name, Description: description, Tags: tags}, &info); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/spaces", headers, protocols.SpaceCreate{Name: name, Description: description, Tags: tags}, &info); err != nil {
 		return protocols.SpaceInfo{}, err
 	}
 	return info, nil
@@ -348,7 +347,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, headers map[st
 	return json.Unmarshal(data, out)
 }
 
-func messageFilterValues(filter api.MessageFilter) url.Values {
+func messageFilterValues(filter protocols.MessageFilter) url.Values {
 	values := url.Values{}
 	if filter.SpaceID != "" {
 		values.Set("space_id", filter.SpaceID)

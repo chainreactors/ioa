@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -63,7 +62,7 @@ func (s *Service) ListNodes(ctx context.Context) ([]protocols.Node, error) {
 	return s.store.ListNodes()
 }
 
-func (s *Service) RegisterNode(ctx context.Context, body api.NodeCreate) (protocols.Node, error) {
+func (s *Service) RegisterNode(ctx context.Context, body protocols.NodeCreate) (protocols.Node, error) {
 	if strings.TrimSpace(body.Name) == "" {
 		return protocols.Node{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "name is required")
 	}
@@ -90,7 +89,7 @@ func (s *Service) GetNode(ctx context.Context, nodeID string) (protocols.Node, e
 	return node, nil
 }
 
-func (s *Service) CreateSpace(ctx context.Context, callerNodeID string, body api.SpaceCreate) (protocols.SpaceInfo, error) {
+func (s *Service) CreateSpace(ctx context.Context, callerNodeID string, body protocols.SpaceCreate) (protocols.SpaceInfo, error) {
 	nodeID, err := s.callerNodeID(callerNodeID)
 	if err != nil {
 		return protocols.SpaceInfo{}, err
@@ -232,7 +231,7 @@ func (s *Service) GetInbox(ctx context.Context, nodeID string, opts protocols.Re
 	return records, nil
 }
 
-func (s *Service) ListMessages(ctx context.Context, filter api.MessageFilter) ([]protocols.Message, error) {
+func (s *Service) ListMessages(ctx context.Context, filter protocols.MessageFilter) ([]protocols.Message, error) {
 	if err := s.validateMessageFilter(filter); err != nil {
 		return nil, err
 	}
@@ -259,28 +258,28 @@ func (s *Service) IsRelated(ctx context.Context, spaceID, rootMessageID, message
 	return false, nil
 }
 
-func (s *Service) AuthRegister(ctx context.Context, body api.AuthRegister) (api.AuthResponse, error) {
+func (s *Service) AuthRegister(ctx context.Context, body protocols.AuthRegister) (protocols.AuthResponse, error) {
 	if body.AccessKey != s.accessKey {
-		return api.AuthResponse{}, protocols.ProtocolError(http.StatusForbidden, "invalid access key")
+		return protocols.AuthResponse{}, protocols.ProtocolError(http.StatusForbidden, "invalid access key")
 	}
 	if strings.TrimSpace(body.Name) == "" {
-		return api.AuthResponse{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "name is required")
+		return protocols.AuthResponse{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "name is required")
 	}
 	node, ok, err := s.store.GetNodeByName(body.Name)
 	if err != nil {
-		return api.AuthResponse{}, err
+		return protocols.AuthResponse{}, err
 	}
 	if !ok {
-		node, err = s.RegisterNode(ctx, api.NodeCreate{Name: body.Name, Description: body.Description, Meta: body.Meta})
+		node, err = s.RegisterNode(ctx, protocols.NodeCreate{Name: body.Name, Description: body.Description, Meta: body.Meta})
 		if err != nil {
-			return api.AuthResponse{}, err
+			return protocols.AuthResponse{}, err
 		}
 	}
 	token := protocols.NewToken()
 	if err := s.store.PutToken(protocols.TokenHash(token), node.ID); err != nil {
-		return api.AuthResponse{}, err
+		return protocols.AuthResponse{}, err
 	}
-	return api.AuthResponse{ID: node.ID, Name: node.Name, Token: token}, nil
+	return protocols.AuthResponse{ID: node.ID, Name: node.Name, Token: token}, nil
 }
 
 func (s *Service) ResolveToken(token string) (protocols.Node, error) {
@@ -295,7 +294,7 @@ func (s *Service) ResolveToken(token string) (protocols.Node, error) {
 	return node, nil
 }
 
-func (s *Service) validateMessageFilter(filter api.MessageFilter) error {
+func (s *Service) validateMessageFilter(filter protocols.MessageFilter) error {
 	if filter.Limit < 0 {
 		return protocols.ProtocolError(http.StatusUnprocessableEntity, "limit must be greater than 0")
 	}
@@ -346,7 +345,7 @@ func (s *Service) findMessage(spaceID, messageID string) (protocols.Message, boo
 	if spaceID != "" {
 		return s.store.GetMessage(spaceID, messageID)
 	}
-	records, err := s.store.ListMessages(api.MessageFilter{MessageID: messageID})
+	records, err := s.store.ListMessages(protocols.MessageFilter{MessageID: messageID})
 	if err != nil {
 		return protocols.Message{}, false, err
 	}
@@ -444,34 +443,6 @@ func compileContentSchema(schema map[string]interface{}) error {
 	}
 	_, err = c.Compile("schema.json")
 	return err
-}
-
-func validateContent(content, schema map[string]interface{}) error {
-	schemaData, err := json.Marshal(schema)
-	if err != nil {
-		return err
-	}
-	var schemaValue interface{}
-	if err := json.Unmarshal(schemaData, &schemaValue); err != nil {
-		return err
-	}
-	c := jsonschema.NewCompiler()
-	if err := c.AddResource("schema.json", schemaValue); err != nil {
-		return err
-	}
-	compiled, err := c.Compile("schema.json")
-	if err != nil {
-		return err
-	}
-	contentData, err := json.Marshal(content)
-	if err != nil {
-		return err
-	}
-	var contentValue interface{}
-	if err := json.Unmarshal(contentData, &contentValue); err != nil {
-		return err
-	}
-	return compiled.Validate(contentValue)
 }
 
 func completeRef(ref protocols.Ref) protocols.Ref {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
 )
 
@@ -25,7 +24,7 @@ type Store interface {
 	GetStartMessages(spaceID, after string, limit int) ([]protocols.Message, error)
 	GetRelatedMessages(spaceID, messageID, direction, after string, limit int) ([]protocols.Message, error)
 	GetInboxMessages(nodeID, after string, limit int) ([]protocols.Message, error)
-	ListMessages(filter api.MessageFilter) ([]protocols.Message, error)
+	ListMessages(filter protocols.MessageFilter) ([]protocols.Message, error)
 
 	PutToken(tokenHash string, nodeID string) error
 	GetNodeByTokenHash(tokenHash string) (protocols.Node, bool, error)
@@ -129,7 +128,7 @@ func ContainsString(values []string, want string) bool {
 	return false
 }
 
-func FilterMessages(messages []protocols.Message, filter api.MessageFilter) []protocols.Message {
+func FilterMessages(messages []protocols.Message, filter protocols.MessageFilter) []protocols.Message {
 	filtered := make([]protocols.Message, 0, len(messages))
 	for _, message := range messages {
 		if filter.SpaceID != "" && message.SpaceID != filter.SpaceID {

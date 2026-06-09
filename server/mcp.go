@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -24,7 +23,7 @@ func (b *mcpBridge) ensureNode(ctx context.Context) (string, error) {
 	if b.nodeID != "" {
 		return b.nodeID, nil
 	}
-	node, err := b.service.RegisterNode(ctx, api.NodeCreate{
+	node, err := b.service.RegisterNode(ctx, protocols.NodeCreate{
 		Name: "mcp-client",
 		Meta: map[string]interface{}{"transport": "mcp"},
 	})
@@ -88,7 +87,7 @@ func (b *mcpBridge) handleSpace(ctx context.Context, request mcp.CallToolRequest
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	info, err := b.service.CreateSpace(ctx, nodeID, api.SpaceCreate{
+	info, err := b.service.CreateSpace(ctx, nodeID, protocols.SpaceCreate{
 		Name:        name,
 		Description: description,
 		Tags:        request.GetStringSlice("tags", nil),

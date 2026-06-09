@@ -548,7 +548,7 @@ func runSpaces(opts options) error {
 		return err
 	}
 	if opts.JSON {
-		return writeJSONOut(spaces)
+		return writeJSON(spaces)
 	}
 	if len(spaces) == 0 {
 		fmt.Fprintln(os.Stderr, "no spaces found")
@@ -576,7 +576,7 @@ func runMessages(opts options) error {
 		return err
 	}
 	if opts.JSON {
-		return writeJSONOut(messages)
+		return writeJSON(messages)
 	}
 	if len(messages) == 0 {
 		fmt.Fprintf(os.Stderr, "no start messages in space %q\n", space.Name)
@@ -606,7 +606,7 @@ func runCtx(opts options) error {
 		return err
 	}
 	if opts.JSON {
-		return writeJSONOut(messages)
+		return writeJSON(messages)
 	}
 	if len(messages) == 0 {
 		fmt.Fprintf(os.Stderr, "no messages in context of %s\n", msgID)
@@ -636,7 +636,7 @@ func runNodes(opts options) error {
 			return err
 		}
 		if opts.JSON {
-			return writeJSONOut(space.Nodes)
+			return writeJSON(space.Nodes)
 		}
 		if len(space.Nodes) == 0 {
 			fmt.Fprintf(os.Stderr, "no nodes in space %q\n", space.Name)
@@ -655,7 +655,7 @@ func runNodes(opts options) error {
 		return err
 	}
 	if opts.JSON {
-		return writeJSONOut(nodes)
+		return writeJSON(nodes)
 	}
 	if len(nodes) == 0 {
 		fmt.Fprintln(os.Stderr, "no nodes found")
@@ -689,12 +689,6 @@ func contentPreview(content map[string]interface{}, maxLen int) string {
 }
 
 func writeJSON(v interface{}) error {
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
-}
-
-func writeJSONOut(v interface{}) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)

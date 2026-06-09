@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
 )
 
@@ -66,7 +65,7 @@ func TestHandlerHealthReportsStoreFailure(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("GET /health status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
 	}
-	var body api.ErrorResponse
+	var body protocols.ErrorResponse
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -284,10 +283,10 @@ func getStatus(t *testing.T, url string, headers map[string]string, wantStatus i
 	return data
 }
 
-func postJSONAuth(t *testing.T, url string, body interface{}, wantStatus int) api.AuthResponse {
+func postJSONAuth(t *testing.T, url string, body interface{}, wantStatus int) protocols.AuthResponse {
 	t.Helper()
 	data := doPostHeaders(t, url, nil, body, wantStatus)
-	var out api.AuthResponse
+	var out protocols.AuthResponse
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
