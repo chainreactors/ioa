@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/chainreactors/ioa"
 	ioaclient "github.com/chainreactors/ioa/client"
+	"github.com/chainreactors/ioa/protocols"
 )
 
 type Logger interface {
@@ -38,7 +38,7 @@ type Task struct {
 	Content   string
 	Targets   []string
 	Meta      map[string]any
-	Refs      ioa.Ref
+	Refs      protocols.Ref
 }
 
 type PeerMessage struct {
@@ -49,7 +49,7 @@ type PeerMessage struct {
 	RawContent  map[string]any
 	Targets     []string
 	Meta        map[string]any
-	Refs        ioa.Ref
+	Refs        protocols.Ref
 }
 
 func (t Task) Prompt() string {
@@ -125,7 +125,7 @@ type Node struct {
 }
 
 type pendingTask struct {
-	msg ioa.Message
+	msg protocols.Message
 	sm  SwarmMessage
 }
 
@@ -283,7 +283,7 @@ func (n *Node) Run(ctx context.Context) error {
 
 
 func (n *Node) catchUp(ctx context.Context, active **activeTask) error {
-	messages, err := n.cfg.Client.Read(ctx, n.spaceID, ioa.ReadOptions{
+	messages, err := n.cfg.Client.Read(ctx, n.spaceID, protocols.ReadOptions{
 		All:   true,
 		After: n.watermark(),
 	})
@@ -311,7 +311,7 @@ func (n *Node) catchUp(ctx context.Context, active **activeTask) error {
 }
 
 func (n *Node) markExisting(ctx context.Context) error {
-	messages, err := n.cfg.Client.Read(ctx, n.spaceID, ioa.ReadOptions{All: true})
+	messages, err := n.cfg.Client.Read(ctx, n.spaceID, protocols.ReadOptions{All: true})
 	if err != nil {
 		return err
 	}
@@ -336,7 +336,7 @@ func (n *Node) RunHeartbeat(ctx context.Context) error {
 }
 
 func (n *Node) execHeartbeat(ctx context.Context, hb heartbeatConfig) error {
-	messages, err := n.cfg.Client.Read(ctx, n.spaceID, ioa.ReadOptions{All: true, Limit: hb.contextLimit})
+	messages, err := n.cfg.Client.Read(ctx, n.spaceID, protocols.ReadOptions{All: true, Limit: hb.contextLimit})
 	if err != nil {
 		return err
 	}
@@ -349,7 +349,7 @@ func (n *Node) execHeartbeat(ctx context.Context, hb heartbeatConfig) error {
 	if runErr != nil {
 		report.Content = fmt.Sprintf("Heartbeat %s error: %s", hb.name, runErr.Error())
 	}
-	_, sendErr := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{
+	_, sendErr := n.cfg.Client.Send(ctx, n.spaceID, protocols.SendMessage{
 		ContentType: "swarm",
 		Content:     SwarmContent(report),
 	})
@@ -362,7 +362,7 @@ func (n *Node) execHeartbeat(ctx context.Context, hb heartbeatConfig) error {
 	return sendErr
 }
 
-func (n *Node) heartbeatPrompt(hb heartbeatConfig, messages []ioa.Message) string {
+func (n *Node) heartbeatPrompt(hb heartbeatConfig, messages []protocols.Message) string {
 	contextView := SlimMessageContext(messages, 32<<10)
 	intent := strings.TrimSpace(hb.prompt)
 	if intent == "" {
@@ -401,7 +401,7 @@ type slimEntry struct {
 	RefNodes []string `json:"ref_nodes,omitempty"`
 }
 
-func SlimMessageContext(messages []ioa.Message, budgetBytes int) string {
+func SlimMessageContext(messages []protocols.Message, budgetBytes int) string {
 	var entries []slimEntry
 	errorCounts := make(map[string]int)
 	var latestError string
@@ -558,8 +558,8 @@ func formatErrorSuffix(counts map[string]int, latest string) string {
 	return sb.String()
 }
 
-func (n *Node) routeIncoming(ctx context.Context, msg ioa.Message, active **activeTask) (bool, error) {
-	if ioa.MessageContentType(msg) == "ioa/fork" {
+func (n *Node) routeIncoming(ctx context.Context, msg protocols.Message, active **activeTask) (bool, error) {
+	if protocols.MessageContentType(msg) == "ioa/fork" {
 		if *active != nil && n.cfg.OnPeer != nil {
 			peer := peerMessageFromIOA(msg, SwarmMessage{})
 			n.cfg.OnPeer(peer)
@@ -618,13 +618,13 @@ func (n *Node) routeIncoming(ctx context.Context, msg ioa.Message, active **acti
 	return true, nil
 }
 
-func (n *Node) startTask(ctx context.Context, msg ioa.Message, sm SwarmMessage) (*activeTask, error) {
+func (n *Node) startTask(ctx context.Context, msg protocols.Message, sm SwarmMessage) (*activeTask, error) {
 	n.cfg.Logger.Importantf("swarm task=received message=%s", msg.ID)
 	running := SwarmMessage{Content: fmt.Sprintf("Accepted task. Executing: %s", truncate(sm.Content, 100))}
-	if _, err := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{
+	if _, err := n.cfg.Client.Send(ctx, n.spaceID, protocols.SendMessage{
 		ContentType: "swarm",
 		Content:     SwarmContent(running),
-		Refs:        &ioa.Ref{Messages: []string{msg.ID}},
+		Refs:        &protocols.Ref{Messages: []string{msg.ID}},
 	}); err != nil {
 		return nil, err
 	}
@@ -657,10 +657,10 @@ func (n *Node) completeTask(ctx context.Context, res taskResult) error {
 	if res.err != nil {
 		report.Content = fmt.Sprintf("Error: %s\n\nPartial output:\n%s", res.err.Error(), res.result)
 	}
-	_, sendErr := n.cfg.Client.Send(ctx, n.spaceID, ioa.SendMessage{
+	_, sendErr := n.cfg.Client.Send(ctx, n.spaceID, protocols.SendMessage{
 		ContentType: "swarm",
 		Content:     SwarmContent(report),
-		Refs:        &ioa.Ref{Messages: []string{res.messageID}},
+		Refs:        &protocols.Ref{Messages: []string{res.messageID}},
 	})
 	if res.err != nil {
 		n.cfg.Logger.Warnf("swarm task=failed message=%s error=%s", res.messageID, res.err)
@@ -709,7 +709,7 @@ func (n *Node) watermark() string {
 	return n.lastSeenID
 }
 
-func isTaskMessage(msg ioa.Message, sm SwarmMessage, nodeID string, active bool) bool {
+func isTaskMessage(msg protocols.Message, sm SwarmMessage, nodeID string, active bool) bool {
 	if kind := MessageKind(msg, sm); kind == "task_dispatch" {
 		return true
 	} else if kind != "" || active {
@@ -721,7 +721,7 @@ func isTaskMessage(msg ioa.Message, sm SwarmMessage, nodeID string, active bool)
 	return len(msg.Refs.Messages) == 0
 }
 
-func MessageKind(msg ioa.Message, sm SwarmMessage) string {
+func MessageKind(msg protocols.Message, sm SwarmMessage) string {
 	if kind, _ := sm.Meta["kind"].(string); kind != "" {
 		return kind
 	}
@@ -735,7 +735,7 @@ func MessageKind(msg ioa.Message, sm SwarmMessage) string {
 	return ""
 }
 
-func peerMessageFromIOA(msg ioa.Message, sm SwarmMessage) PeerMessage {
+func peerMessageFromIOA(msg protocols.Message, sm SwarmMessage) PeerMessage {
 	peer := PeerMessage{
 		MessageID:   msg.ID,
 		Sender:      msg.Sender,

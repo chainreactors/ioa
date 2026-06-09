@@ -13,7 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 )
 
 func TestHandlerHealth(t *testing.T) {
@@ -65,7 +66,7 @@ func TestHandlerHealthReportsStoreFailure(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("GET /health status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
 	}
-	var body ioa.ErrorResponse
+	var body api.ErrorResponse
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +118,7 @@ type failingListSpacesStore struct {
 	err error
 }
 
-func (s failingListSpacesStore) ListSpaces() ([]ioa.Space, error) {
+func (s failingListSpacesStore) ListSpaces() ([]protocols.Space, error) {
 	return nil, s.err
 }
 
@@ -164,7 +165,7 @@ func TestHandlerHTTPAndSSE(t *testing.T) {
 		if data == "" {
 			t.Fatal("sse closed without data")
 		}
-		var got ioa.Message
+		var got protocols.Message
 		if err := json.Unmarshal([]byte(data), &got); err != nil {
 			t.Fatalf("decode sse data: %v", err)
 		}
@@ -225,10 +226,10 @@ func TestHandlerMessagesAndGraph(t *testing.T) {
 	if graph.Stats.SpaceCount != 1 || graph.Stats.MessageCount != 3 {
 		t.Fatalf("GET /spaces/{id}/graph stats = %#v, want one space and three messages", graph.Stats)
 	}
-	if !hasHandlerGraphEdge(graph, ioa.GraphEdge{Source: "message:" + child.ID, Target: "message:" + root.ID, Kind: "refs.messages"}) {
+	if !hasHandlerGraphEdge(graph, api.GraphEdge{Source: "message:" + child.ID, Target: "message:" + root.ID, Kind: "refs.messages"}) {
 		t.Fatalf("space graph missing refs.messages edge: %#v", graph.Edges)
 	}
-	if !hasHandlerGraphEdge(graph, ioa.GraphEdge{Source: "message:" + directed.ID, Target: "node:" + nodeB.ID, Kind: "refs.nodes"}) {
+	if !hasHandlerGraphEdge(graph, api.GraphEdge{Source: "message:" + directed.ID, Target: "node:" + nodeB.ID, Kind: "refs.nodes"}) {
 		t.Fatalf("space graph missing refs.nodes edge: %#v", graph.Edges)
 	}
 
@@ -299,60 +300,60 @@ func getStatus(t *testing.T, url string, headers map[string]string, wantStatus i
 	return data
 }
 
-func postJSONAuth(t *testing.T, url string, body interface{}, wantStatus int) ioa.AuthResponse {
+func postJSONAuth(t *testing.T, url string, body interface{}, wantStatus int) api.AuthResponse {
 	t.Helper()
 	data := doPostHeaders(t, url, nil, body, wantStatus)
-	var out ioa.AuthResponse
+	var out api.AuthResponse
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
-func postJSONNode(t *testing.T, url, nodeID string, body interface{}, wantStatus int) ioa.Node {
+func postJSONNode(t *testing.T, url, nodeID string, body interface{}, wantStatus int) protocols.Node {
 	t.Helper()
 	data := doPost(t, url, nodeID, body, wantStatus)
-	var out ioa.Node
+	var out protocols.Node
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
-func postJSONSpaceInfo(t *testing.T, url, nodeID string, body interface{}, wantStatus int) ioa.SpaceInfo {
+func postJSONSpaceInfo(t *testing.T, url, nodeID string, body interface{}, wantStatus int) protocols.SpaceInfo {
 	t.Helper()
 	data := doPost(t, url, nodeID, body, wantStatus)
-	var out ioa.SpaceInfo
+	var out protocols.SpaceInfo
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
-func postJSONSpaceInfoHeaders(t *testing.T, url string, headers map[string]string, body interface{}, wantStatus int) ioa.SpaceInfo {
+func postJSONSpaceInfoHeaders(t *testing.T, url string, headers map[string]string, body interface{}, wantStatus int) protocols.SpaceInfo {
 	t.Helper()
 	data := doPostHeaders(t, url, headers, body, wantStatus)
-	var out ioa.SpaceInfo
+	var out protocols.SpaceInfo
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
-func postJSONMessage(t *testing.T, url, nodeID string, body interface{}, wantStatus int) ioa.Message {
+func postJSONMessage(t *testing.T, url, nodeID string, body interface{}, wantStatus int) protocols.Message {
 	t.Helper()
 	data := doPost(t, url, nodeID, body, wantStatus)
-	var out ioa.Message
+	var out protocols.Message
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
-func postJSONMessageHeaders(t *testing.T, url string, headers map[string]string, body interface{}, wantStatus int) ioa.Message {
+func postJSONMessageHeaders(t *testing.T, url string, headers map[string]string, body interface{}, wantStatus int) protocols.Message {
 	t.Helper()
 	data := doPostHeaders(t, url, headers, body, wantStatus)
-	var out ioa.Message
+	var out protocols.Message
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
@@ -369,27 +370,27 @@ func postJSONStatusHeaders(t *testing.T, url string, headers map[string]string, 
 	doPostHeaders(t, url, headers, body, wantStatus)
 }
 
-func getJSONMessageRecords(t *testing.T, url string, wantStatus int) []ioa.MessageRecord {
+func getJSONMessageRecords(t *testing.T, url string, wantStatus int) []protocols.Message {
 	t.Helper()
 	data := doGet(t, url, wantStatus)
-	var out []ioa.MessageRecord
+	var out []protocols.Message
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
-func getJSONGraph(t *testing.T, url string, wantStatus int) ioa.GraphView {
+func getJSONGraph(t *testing.T, url string, wantStatus int) api.GraphView {
 	t.Helper()
 	data := doGet(t, url, wantStatus)
-	var out ioa.GraphView
+	var out api.GraphView
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
-func handlerRecordIDs(messages []ioa.MessageRecord) []string {
+func handlerRecordIDs(messages []protocols.Message) []string {
 	ids := make([]string, 0, len(messages))
 	for _, message := range messages {
 		ids = append(ids, message.ID)
@@ -397,7 +398,7 @@ func handlerRecordIDs(messages []ioa.MessageRecord) []string {
 	return ids
 }
 
-func hasHandlerGraphEdge(graph ioa.GraphView, want ioa.GraphEdge) bool {
+func hasHandlerGraphEdge(graph api.GraphView, want api.GraphEdge) bool {
 	for _, edge := range graph.Edges {
 		if edge == want {
 			return true

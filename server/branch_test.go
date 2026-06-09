@@ -3,21 +3,21 @@ package server
 import (
 	"testing"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/protocols"
 )
 
-func seedMessages(store Store, spaceID string, msgs ...ioa.MessageRecord) {
+func seedMessages(store Store, spaceID string, msgs ...protocols.Message) {
 	for _, m := range msgs {
 		_ = store.AppendMessage(m)
 	}
 }
 
-func msg(id, spaceID string, parents ...string) ioa.MessageRecord {
-	return ioa.MessageRecord{
+func msg(id, spaceID string, parents ...string) protocols.Message {
+	return protocols.Message{
 		ID:      id,
 		SpaceID: spaceID,
 		Sender:  "test",
-		Refs:    ioa.Ref{Messages: parents},
+		Refs:    protocols.Ref{Messages: parents},
 		Content: map[string]interface{}{"text": id},
 	}
 }
@@ -27,7 +27,7 @@ func TestHeadTracker_LinearThread(t *testing.T) {
 	// New message D (parent=C) should extend branch
 	// New message E (parent=A) should be unrelated (beyond depth 1)
 	store := NewMemoryStore()
-	space := ioa.Space{ID: "s1", Name: "test"}
+	space := protocols.Space{ID: "s1", Name: "test"}
 	store.PutSpaceIfAbsent(space)
 	seedMessages(store, "s1",
 		msg("A", "s1"),
@@ -44,7 +44,7 @@ func TestHeadTracker_LinearThread(t *testing.T) {
 	}
 
 	// D extends C
-	deliver, fork := ht.Accept(ioa.Message{ID: "D", Refs: ioa.Ref{Messages: []string{"C"}}})
+	deliver, fork := ht.Accept(protocols.Message{ID: "D", Refs: protocols.Ref{Messages: []string{"C"}}})
 	if !deliver || fork {
 		t.Errorf("D: deliver=%v fork=%v, want deliver=true fork=false", deliver, fork)
 	}
@@ -53,7 +53,7 @@ func TestHeadTracker_LinearThread(t *testing.T) {
 	}
 
 	// E references A (2 levels back, beyond depth=1)
-	deliver, fork = ht.Accept(ioa.Message{ID: "E", Refs: ioa.Ref{Messages: []string{"A"}}})
+	deliver, fork = ht.Accept(protocols.Message{ID: "E", Refs: protocols.Ref{Messages: []string{"A"}}})
 	if deliver {
 		t.Errorf("E: deliver=%v, want false (beyond depth)", deliver)
 	}
@@ -63,7 +63,7 @@ func TestHeadTracker_Fork(t *testing.T) {
 	// A → B → C, head=C
 	// D (parent=B) should be detected as fork (depth=1 from C)
 	store := NewMemoryStore()
-	space := ioa.Space{ID: "s1", Name: "test"}
+	space := protocols.Space{ID: "s1", Name: "test"}
 	store.PutSpaceIfAbsent(space)
 	seedMessages(store, "s1",
 		msg("A", "s1"),
@@ -77,7 +77,7 @@ func TestHeadTracker_Fork(t *testing.T) {
 	}
 
 	// D forks from B (parent of C, within depth=1)
-	deliver, fork := ht.Accept(ioa.Message{ID: "D", Refs: ioa.Ref{Messages: []string{"B"}}})
+	deliver, fork := ht.Accept(protocols.Message{ID: "D", Refs: protocols.Ref{Messages: []string{"B"}}})
 	if !deliver || !fork {
 		t.Errorf("D: deliver=%v fork=%v, want deliver=true fork=true", deliver, fork)
 	}
@@ -88,7 +88,7 @@ func TestHeadTracker_ForkDepth2(t *testing.T) {
 	// E (parent=B) should be fork (within depth 2)
 	// F (parent=A) should be unrelated (depth 3, beyond 2)
 	store := NewMemoryStore()
-	space := ioa.Space{ID: "s1", Name: "test"}
+	space := protocols.Space{ID: "s1", Name: "test"}
 	store.PutSpaceIfAbsent(space)
 	seedMessages(store, "s1",
 		msg("A", "s1"),
@@ -102,12 +102,12 @@ func TestHeadTracker_ForkDepth2(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deliver, fork := ht.Accept(ioa.Message{ID: "E", Refs: ioa.Ref{Messages: []string{"B"}}})
+	deliver, fork := ht.Accept(protocols.Message{ID: "E", Refs: protocols.Ref{Messages: []string{"B"}}})
 	if !deliver || !fork {
 		t.Errorf("E: deliver=%v fork=%v, want deliver=true fork=true", deliver, fork)
 	}
 
-	deliver, fork = ht.Accept(ioa.Message{ID: "F", Refs: ioa.Ref{Messages: []string{"A"}}})
+	deliver, fork = ht.Accept(protocols.Message{ID: "F", Refs: protocols.Ref{Messages: []string{"A"}}})
 	if deliver {
 		t.Errorf("F: deliver=%v, want false (beyond depth=2)", deliver)
 	}
@@ -115,7 +115,7 @@ func TestHeadTracker_ForkDepth2(t *testing.T) {
 
 func TestHeadTracker_NoRefs(t *testing.T) {
 	store := NewMemoryStore()
-	space := ioa.Space{ID: "s1", Name: "test"}
+	space := protocols.Space{ID: "s1", Name: "test"}
 	store.PutSpaceIfAbsent(space)
 	seedMessages(store, "s1", msg("A", "s1"))
 
@@ -124,7 +124,7 @@ func TestHeadTracker_NoRefs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deliver, _ := ht.Accept(ioa.Message{ID: "B"})
+	deliver, _ := ht.Accept(protocols.Message{ID: "B"})
 	if deliver {
 		t.Errorf("B (no refs): deliver=%v, want false", deliver)
 	}
@@ -134,7 +134,7 @@ func TestHeadTracker_DAGMerge(t *testing.T) {
 	// A → B, A → C, head=B
 	// D (parents=[B, C]) should extend branch (one parent is HEAD)
 	store := NewMemoryStore()
-	space := ioa.Space{ID: "s1", Name: "test"}
+	space := protocols.Space{ID: "s1", Name: "test"}
 	store.PutSpaceIfAbsent(space)
 	seedMessages(store, "s1",
 		msg("A", "s1"),
@@ -147,7 +147,7 @@ func TestHeadTracker_DAGMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deliver, fork := ht.Accept(ioa.Message{ID: "D", Refs: ioa.Ref{Messages: []string{"B", "C"}}})
+	deliver, fork := ht.Accept(protocols.Message{ID: "D", Refs: protocols.Ref{Messages: []string{"B", "C"}}})
 	if !deliver || fork {
 		t.Errorf("D (DAG merge): deliver=%v fork=%v, want deliver=true fork=false", deliver, fork)
 	}

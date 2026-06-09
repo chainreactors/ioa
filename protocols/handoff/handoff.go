@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chainreactors/ioa"
 	"github.com/chainreactors/ioa/protocols"
 	"github.com/chainreactors/ioa/skills"
 )
@@ -15,34 +14,33 @@ func init() {
 	protocols.Register(&protocols.Protocol{
 		Name:        "handoff",
 		Description: "Fire-and-forget work delegation",
-		Send: []protocols.SubcommandDef{{
-			Name:        "handoff",
+		Send: &protocols.Handler{
 			Description: "Delegate work to another agent",
-			Data:        &SendFlags{},
+			Flags:       &SendFlags{},
 			Execute:     execSend,
-		}},
-		Read: []protocols.SubcommandDef{{
-			Name:        "handoff",
+		},
+		Read: &protocols.Handler{
 			Description: "Read handoff messages",
-			Data:        &ReadFlags{},
+			Flags:       &ReadFlags{},
 			Execute:     execRead,
-		}},
+		},
 	})
 }
 
 type SendFlags struct {
-	Title    string `long:"title" json:"title" required:"yes" description:"Short label for the delegated work"`
-	Message  string `long:"message" json:"message" description:"Detailed context for the receiver"`
-	RefNodes string `long:"ref-nodes" json:"ref_nodes" description:"Comma-separated target node IDs for routing"`
+	Title    string `long:"title" json:"title" description:"Handoff title"`
+	Message  string `long:"message" json:"message" description:"Handoff message body"`
+	RefNodes string `long:"ref_nodes" json:"ref_nodes" description:"Comma-separated reference node IDs"`
 }
 
 type ReadFlags struct {
-	After string `long:"after" json:"after" description:"Read handoffs after this message ID"`
-	Limit int    `long:"limit" json:"limit" description:"Maximum number of messages"`
+	After string `long:"after" json:"after" description:"Read messages after this ID"`
+	Limit int    `long:"limit" json:"limit" description:"Max number of messages to read"`
 }
 
-func execSend(ctx context.Context, env *protocols.Env) (string, error) {
-	flags := protocols.FlagsFrom[SendFlags](env)
+func execSend(ctx context.Context, env *protocols.Env, args interface{}) (string, error) {
+	var flags SendFlags
+	protocols.ParseArgs(args, &flags)
 	if flags.Title == "" {
 		return "", fmt.Errorf("handoff: --title is required")
 	}
@@ -54,7 +52,7 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 		content["message"] = flags.Message
 	}
 
-	body := ioa.SendMessage{ContentType: "handoff", Content: content}
+	body := protocols.SendMessage{ContentType: "handoff", Content: content}
 	if flags.RefNodes != "" {
 		var nodes []string
 		for _, n := range strings.Split(flags.RefNodes, ",") {
@@ -64,7 +62,7 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 			}
 		}
 		if len(nodes) > 0 {
-			body.Refs = &ioa.Ref{Nodes: nodes}
+			body.Refs = &protocols.Ref{Nodes: nodes}
 		}
 	}
 
@@ -75,10 +73,11 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 	return encodeResult(msg)
 }
 
-func execRead(ctx context.Context, env *protocols.Env) (string, error) {
-	flags := protocols.FlagsFrom[ReadFlags](env)
+func execRead(ctx context.Context, env *protocols.Env, args interface{}) (string, error) {
+	var flags ReadFlags
+	protocols.ParseArgs(args, &flags)
 
-	opts := ioa.ReadOptions{All: true}
+	opts := protocols.ReadOptions{All: true}
 	if flags.After != "" {
 		opts.After = flags.After
 	}
@@ -91,9 +90,9 @@ func execRead(ctx context.Context, env *protocols.Env) (string, error) {
 		return "", err
 	}
 
-	var handoffs []ioa.Message
+	var handoffs []protocols.Message
 	for _, m := range messages {
-		if ioa.MessageContentType(m) == "handoff" {
+		if protocols.MessageContentType(m) == "handoff" {
 			handoffs = append(handoffs, m)
 		}
 	}

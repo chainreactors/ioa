@@ -1,29 +1,32 @@
 package server
 
-import "github.com/chainreactors/ioa"
+import (
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
+)
 
 type Store interface {
-	PutNode(node ioa.Node) error
-	GetNode(nodeID string) (ioa.Node, bool, error)
-	GetNodeByName(name string) (ioa.Node, bool, error)
-	ListNodes() ([]ioa.Node, error)
+	PutNode(node protocols.Node) error
+	GetNode(nodeID string) (protocols.Node, bool, error)
+	GetNodeByName(name string) (protocols.Node, bool, error)
+	ListNodes() ([]protocols.Node, error)
 
-	PutSpaceIfAbsent(space ioa.Space) (ioa.Space, error)
-	GetSpace(spaceID string) (ioa.Space, bool, error)
-	ListSpaces() ([]ioa.Space, error)
+	PutSpaceIfAbsent(space protocols.Space) (protocols.Space, error)
+	GetSpace(spaceID string) (protocols.Space, bool, error)
+	ListSpaces() ([]protocols.Space, error)
 	JoinSpace(spaceID, nodeID, description string) error
-	GetSpaceNodes(spaceID string) ([]ioa.SpaceNodeRecord, error)
+	GetSpaceNodes(spaceID string) ([]protocols.Node, error)
 
-	AppendMessage(message ioa.MessageRecord) error
-	GetMessage(spaceID, messageID string) (ioa.MessageRecord, bool, error)
-	GetMessagesForNode(spaceID, nodeID, after string, limit int) ([]ioa.MessageRecord, error)
+	AppendMessage(message protocols.Message) error
+	GetMessage(spaceID, messageID string) (protocols.Message, bool, error)
+	GetMessagesForNode(spaceID, nodeID, after string, limit int) ([]protocols.Message, error)
 	GetMessageCount(spaceID string) (int, error)
-	GetMessages(spaceID, after string, limit int) ([]ioa.MessageRecord, error)
-	GetStartMessages(spaceID, after string, limit int) ([]ioa.MessageRecord, error)
-	GetRelatedMessages(spaceID, messageID, after string, limit int) ([]ioa.MessageRecord, error)
-	GetInboxMessages(nodeID, after string, limit int) ([]ioa.MessageRecord, error)
-	ListMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, error)
+	GetMessages(spaceID, after string, limit int) ([]protocols.Message, error)
+	GetStartMessages(spaceID, after string, limit int) ([]protocols.Message, error)
+	GetRelatedMessages(spaceID, messageID, after string, limit int) ([]protocols.Message, error)
+	GetInboxMessages(nodeID, after string, limit int) ([]protocols.Message, error)
+	ListMessages(filter api.MessageFilter) ([]protocols.Message, error)
 
 	PutToken(tokenHash string, nodeID string) error
-	GetNodeByTokenHash(tokenHash string) (ioa.Node, bool, error)
+	GetNodeByTokenHash(tokenHash string) (protocols.Node, bool, error)
 }

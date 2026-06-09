@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 	"github.com/chainreactors/ioa/server"
 )
 
@@ -32,7 +33,7 @@ func TestClientAndTools(t *testing.T) {
 	if client.NodeID() == "" {
 		t.Fatal("client node id was not auto-registered")
 	}
-	var space ioa.SpaceInfo
+	var space protocols.SpaceInfo
 	if err := json.Unmarshal([]byte(spaceOut), &space); err != nil {
 		t.Fatalf("decode space: %v", err)
 	}
@@ -44,7 +45,7 @@ func TestClientAndTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acp_send error = %v", err)
 	}
-	var message ioa.Message
+	var message protocols.Message
 	if err := json.Unmarshal([]byte(sendOut), &message); err != nil {
 		t.Fatalf("decode message: %v", err)
 	}
@@ -92,34 +93,34 @@ func TestClientProjections(t *testing.T) {
 	if _, err := clientB.Space(ctx, "case", "reviewer"); err != nil {
 		t.Fatalf("Space(b) error = %v", err)
 	}
-	root, err := clientA.Send(ctx, space.ID, ioa.SendMessage{Content: map[string]interface{}{"text": "root"}})
+	root, err := clientA.Send(ctx, space.ID, protocols.SendMessage{Content: map[string]interface{}{"text": "root"}})
 	if err != nil {
 		t.Fatalf("Send(root) error = %v", err)
 	}
-	child, err := clientB.Send(ctx, space.ID, ioa.SendMessage{
+	child, err := clientB.Send(ctx, space.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "child"},
-		Refs:    &ioa.Ref{Messages: []string{root.ID}, Nodes: []string{nodeA.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root.ID}, Nodes: []string{nodeA.ID}},
 	})
 	if err != nil {
 		t.Fatalf("Send(child) error = %v", err)
 	}
 
-	records, err := clientA.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
+	records, err := clientA.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
 	if err != nil {
 		t.Fatalf("ListMessages() error = %v", err)
 	}
 	if len(records) != 1 || records[0].ID != child.ID || records[0].SpaceID != space.ID {
 		t.Fatalf("ListMessages() = %#v, want child with space_id", records)
 	}
-	graph, err := clientA.GetSpaceGraph(ctx, space.ID, ioa.GraphOptions{})
+	graph, err := clientA.GetSpaceGraph(ctx, space.ID, api.GraphOptions{})
 	if err != nil {
 		t.Fatalf("GetSpaceGraph() error = %v", err)
 	}
-	if !hasClientGraphEdge(graph, ioa.GraphEdge{Source: "message:" + child.ID, Target: "message:" + root.ID, Kind: "refs.messages"}) {
+	if !hasClientGraphEdge(graph, api.GraphEdge{Source: "message:" + child.ID, Target: "message:" + root.ID, Kind: "refs.messages"}) {
 		t.Fatalf("GetSpaceGraph() missing refs.messages edge: %#v", graph.Edges)
 	}
-	global, err := clientA.GetGraph(ctx, ioa.GraphOptions{
-		MessageFilter: ioa.MessageFilter{NodeID: nodeB.ID},
+	global, err := clientA.GetGraph(ctx, api.GraphOptions{
+		MessageFilter: api.MessageFilter{NodeID: nodeB.ID},
 		Include:       []string{"messages", "edges"},
 	})
 	if err != nil {
@@ -147,7 +148,7 @@ func TestSendToolRejectsMissingContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acp_space error = %v", err)
 	}
-	var space ioa.SpaceInfo
+	var space protocols.SpaceInfo
 	if err := json.Unmarshal([]byte(spaceOut), &space); err != nil {
 		t.Fatalf("decode space: %v", err)
 	}
@@ -159,7 +160,7 @@ func TestSendToolRejectsMissingContent(t *testing.T) {
 	}
 }
 
-func hasClientGraphEdge(graph ioa.GraphView, want ioa.GraphEdge) bool {
+func hasClientGraphEdge(graph api.GraphView, want api.GraphEdge) bool {
 	for _, edge := range graph.Edges {
 		if edge == want {
 			return true

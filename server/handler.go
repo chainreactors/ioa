@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 )
 
 type Handler struct {
@@ -52,7 +53,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //	@Tags			system
 //	@Produce		json
 //	@Success		200	{object}	map[string]string	"Server is ready"
-//	@Failure		503	{object}	ioa.ErrorResponse	"Server is not ready"
+//	@Failure		503	{object}	api.ErrorResponse	"Server is not ready"
 //	@Router			/health [get]
 //	@Router			/ready [get]
 func (h *Handler) health(w http.ResponseWriter, r *http.Request, segments []string) {
@@ -80,7 +81,7 @@ func (h *Handler) serveAuth(w http.ResponseWriter, r *http.Request, segments []s
 }
 
 func (h *Handler) authRegister(w http.ResponseWriter, r *http.Request) {
-	var body ioa.AuthRegister
+	var body api.AuthRegister
 	if !decodeJSON(w, r, &body) {
 		return
 	}
@@ -144,13 +145,13 @@ func (h *Handler) serveGraph(w http.ResponseWriter, r *http.Request, segments []
 //	@Tags			nodes
 //	@Accept			json
 //	@Produce		json
-//	@Param			body	body		ioa.NodeCreate		true	"Node registration payload"
-//	@Success		201		{object}	ioa.Node			"Created node"
-//	@Failure		422		{object}	ioa.ErrorResponse	"Invalid request body"
-//	@Failure		500		{object}	ioa.ErrorResponse	"Internal server error"
+//	@Param			body	body		api.NodeCreate		true	"Node registration payload"
+//	@Success		201		{object}	protocols.Node			"Created node"
+//	@Failure		422		{object}	api.ErrorResponse	"Invalid request body"
+//	@Failure		500		{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/nodes [post]
 func (h *Handler) registerNode(w http.ResponseWriter, r *http.Request) {
-	var body ioa.NodeCreate
+	var body api.NodeCreate
 	if !decodeJSON(w, r, &body) {
 		return
 	}
@@ -168,8 +169,8 @@ func (h *Handler) registerNode(w http.ResponseWriter, r *http.Request) {
 //	@Description	Return all registered nodes
 //	@Tags			nodes
 //	@Produce		json
-//	@Success		200	{array}		ioa.Node			"List of nodes"
-//	@Failure		500	{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200	{array}		protocols.Node			"List of nodes"
+//	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/nodes [get]
 func (h *Handler) listNodes(w http.ResponseWriter, r *http.Request) {
 	nodes, err := h.service.ListNodes(r.Context())
@@ -187,9 +188,9 @@ func (h *Handler) listNodes(w http.ResponseWriter, r *http.Request) {
 //	@Tags			nodes
 //	@Produce		json
 //	@Param			nodeID	path		string				true	"Node ID"
-//	@Success		200		{object}	ioa.Node			"Node details"
-//	@Failure		404		{object}	ioa.ErrorResponse	"Node not found"
-//	@Failure		500		{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200		{object}	protocols.Node			"Node details"
+//	@Failure		404		{object}	api.ErrorResponse	"Node not found"
+//	@Failure		500		{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/nodes/{nodeID} [get]
 func (h *Handler) getNode(w http.ResponseWriter, r *http.Request, nodeID string) {
 	node, err := h.service.GetNode(r.Context(), nodeID)
@@ -209,10 +210,10 @@ func (h *Handler) getNode(w http.ResponseWriter, r *http.Request, nodeID string)
 //	@Param			nodeID	path		string				true	"Node ID"
 //	@Param			after	query		string				false	"Pagination cursor: return messages after this ID"
 //	@Param			limit	query		int					false	"Maximum number of messages to return"
-//	@Success		200		{array}		ioa.MessageRecord	"List of inbox messages (includes space_id)"
-//	@Failure		404		{object}	ioa.ErrorResponse	"Node not found"
-//	@Failure		422		{object}	ioa.ErrorResponse	"Invalid query parameters"
-//	@Failure		500		{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200		{array}		protocols.Message	"List of inbox messages (includes space_id)"
+//	@Failure		404		{object}	api.ErrorResponse	"Node not found"
+//	@Failure		422		{object}	api.ErrorResponse	"Invalid query parameters"
+//	@Failure		500		{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/nodes/{nodeID}/inbox [get]
 func (h *Handler) getInbox(w http.ResponseWriter, r *http.Request, nodeID string) {
 	opts, ok := readOptionsFromRequest(w, r)
@@ -234,9 +235,9 @@ func (h *Handler) getInbox(w http.ResponseWriter, r *http.Request, nodeID string
 //	@Tags			events
 //	@Produce		text/event-stream
 //	@Param			nodeID	path	string	true	"Node ID"
-//	@Success		200		"SSE stream of ioa.Message events"
-//	@Failure		404		{object}	ioa.ErrorResponse	"Node not found"
-//	@Failure		500		{object}	ioa.ErrorResponse	"Streaming not supported"
+//	@Success		200		"SSE stream of protocols.Message events"
+//	@Failure		404		{object}	api.ErrorResponse	"Node not found"
+//	@Failure		500		{object}	api.ErrorResponse	"Streaming not supported"
 //	@Router			/nodes/{nodeID}/sse [get]
 func (h *Handler) sseNode(w http.ResponseWriter, r *http.Request, nodeID string) {
 	if _, err := h.service.GetNode(r.Context(), nodeID); err != nil {
@@ -296,10 +297,10 @@ func (h *Handler) sseNode(w http.ResponseWriter, r *http.Request, nodeID string)
 //	@Param			ref_node	query		string				false	"Referenced node ID filter"
 //	@Param			after		query		string				false	"Pagination cursor: return messages after this ID"
 //	@Param			limit		query		int					false	"Maximum number of messages to return"
-//	@Success		200			{array}		ioa.MessageRecord	"List of messages"
-//	@Failure		404			{object}	ioa.ErrorResponse	"Filter target not found"
-//	@Failure		422			{object}	ioa.ErrorResponse	"Invalid query parameters"
-//	@Failure		500			{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200			{array}		protocols.Message	"List of messages"
+//	@Failure		404			{object}	api.ErrorResponse	"Filter target not found"
+//	@Failure		422			{object}	api.ErrorResponse	"Invalid query parameters"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/messages [get]
 func (h *Handler) listMessages(w http.ResponseWriter, r *http.Request) {
 	filter, ok := messageFilterFromRequest(w, r)
@@ -329,10 +330,10 @@ func (h *Handler) listMessages(w http.ResponseWriter, r *http.Request) {
 //	@Param			after		query		string				false	"Pagination cursor: return messages after this ID"
 //	@Param			limit		query		int					false	"Maximum number of messages to return"
 //	@Param			include		query		string				false	"Comma-separated sections: spaces,nodes,messages,edges"
-//	@Success		200			{object}	ioa.GraphView		"Graph projection"
-//	@Failure		404			{object}	ioa.ErrorResponse	"Filter target not found"
-//	@Failure		422			{object}	ioa.ErrorResponse	"Invalid query parameters"
-//	@Failure		500			{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200			{object}	api.GraphView		"Graph projection"
+//	@Failure		404			{object}	api.ErrorResponse	"Filter target not found"
+//	@Failure		422			{object}	api.ErrorResponse	"Invalid query parameters"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/graph [get]
 func (h *Handler) getGraph(w http.ResponseWriter, r *http.Request) {
 	opts, ok := graphOptionsFromRequest(w, r)
@@ -407,13 +408,13 @@ func (h *Handler) serveSpaces(w http.ResponseWriter, r *http.Request, segments [
 //	@Accept			json
 //	@Produce		json
 //	@Param			x-node-id	header		string				false	"Caller node ID"
-//	@Param			body		body		ioa.SpaceCreate		true	"Space creation payload"
-//	@Success		200			{object}	ioa.SpaceInfo		"Space info"
-//	@Failure		422			{object}	ioa.ErrorResponse	"Invalid request body"
-//	@Failure		500			{object}	ioa.ErrorResponse	"Internal server error"
+//	@Param			body		body		api.SpaceCreate		true	"Space creation payload"
+//	@Success		200			{object}	protocols.SpaceInfo		"Space info"
+//	@Failure		422			{object}	api.ErrorResponse	"Invalid request body"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/spaces [post]
 func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request) {
-	var body ioa.SpaceCreate
+	var body api.SpaceCreate
 	if !decodeJSON(w, r, &body) {
 		return
 	}
@@ -431,8 +432,8 @@ func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request) {
 //	@Description	Return all spaces with their node counts and message counts
 //	@Tags			spaces
 //	@Produce		json
-//	@Success		200	{array}		ioa.SpaceInfo		"List of spaces"
-//	@Failure		500	{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200	{array}		protocols.SpaceInfo		"List of spaces"
+//	@Failure		500	{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/spaces [get]
 func (h *Handler) listSpaces(w http.ResponseWriter, r *http.Request) {
 	spaces, err := h.service.ListSpaces(r.Context())
@@ -450,9 +451,9 @@ func (h *Handler) listSpaces(w http.ResponseWriter, r *http.Request) {
 //	@Tags			spaces
 //	@Produce		json
 //	@Param			spaceID	path		string				true	"Space ID"
-//	@Success		200		{object}	ioa.SpaceInfo		"Space details"
-//	@Failure		404		{object}	ioa.ErrorResponse	"Space not found"
-//	@Failure		500		{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200		{object}	protocols.SpaceInfo		"Space details"
+//	@Failure		404		{object}	api.ErrorResponse	"Space not found"
+//	@Failure		500		{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/spaces/{spaceID} [get]
 func (h *Handler) getSpace(w http.ResponseWriter, r *http.Request, spaceID string) {
 	info, err := h.service.GetSpace(r.Context(), spaceID)
@@ -478,10 +479,10 @@ func (h *Handler) getSpace(w http.ResponseWriter, r *http.Request, spaceID strin
 //	@Param			after		query		string				false	"Pagination cursor: return messages after this ID"
 //	@Param			limit		query		int					false	"Maximum number of messages to return"
 //	@Param			include		query		string				false	"Comma-separated sections: spaces,nodes,messages,edges"
-//	@Success		200			{object}	ioa.GraphView		"Graph projection"
-//	@Failure		404			{object}	ioa.ErrorResponse	"Space or filter target not found"
-//	@Failure		422			{object}	ioa.ErrorResponse	"Invalid query parameters"
-//	@Failure		500			{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200			{object}	api.GraphView		"Graph projection"
+//	@Failure		404			{object}	api.ErrorResponse	"Space or filter target not found"
+//	@Failure		422			{object}	api.ErrorResponse	"Invalid query parameters"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/spaces/{spaceID}/graph [get]
 func (h *Handler) getSpaceGraph(w http.ResponseWriter, r *http.Request, spaceID string) {
 	opts, ok := graphOptionsFromRequest(w, r)
@@ -505,14 +506,14 @@ func (h *Handler) getSpaceGraph(w http.ResponseWriter, r *http.Request, spaceID 
 //	@Produce		json
 //	@Param			spaceID		path		string				true	"Space ID"
 //	@Param			x-node-id	header		string				false	"Caller node ID (sender)"
-//	@Param			body		body		ioa.SendMessage		true	"Message payload"
-//	@Success		201			{object}	ioa.Message			"Created message"
-//	@Failure		404			{object}	ioa.ErrorResponse	"Space not found"
-//	@Failure		422			{object}	ioa.ErrorResponse	"Invalid request body"
-//	@Failure		500			{object}	ioa.ErrorResponse	"Internal server error"
+//	@Param			body		body		protocols.SendMessage		true	"Message payload"
+//	@Success		201			{object}	protocols.Message			"Created message"
+//	@Failure		404			{object}	api.ErrorResponse	"Space not found"
+//	@Failure		422			{object}	api.ErrorResponse	"Invalid request body"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/spaces/{spaceID}/messages [post]
 func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request, spaceID string) {
-	var body ioa.SendMessage
+	var body protocols.SendMessage
 	if !decodeJSON(w, r, &body) {
 		return
 	}
@@ -536,10 +537,10 @@ func (h *Handler) sendMessage(w http.ResponseWriter, r *http.Request, spaceID st
 //	@Param			after		query		string				false	"Pagination cursor: return messages after this ID"
 //	@Param			limit		query		int					false	"Maximum number of messages to return"
 //	@Param			all			query		bool				false	"If true, return all messages ignoring node filtering"
-//	@Success		200			{array}		ioa.Message			"List of messages"
-//	@Failure		404			{object}	ioa.ErrorResponse	"Space not found"
-//	@Failure		422			{object}	ioa.ErrorResponse	"Invalid query parameters"
-//	@Failure		500			{object}	ioa.ErrorResponse	"Internal server error"
+//	@Success		200			{array}		protocols.Message			"List of messages"
+//	@Failure		404			{object}	api.ErrorResponse	"Space not found"
+//	@Failure		422			{object}	api.ErrorResponse	"Invalid query parameters"
+//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
 //	@Router			/spaces/{spaceID}/messages [get]
 func (h *Handler) readMessages(w http.ResponseWriter, r *http.Request, spaceID string) {
 	opts, ok := readOptionsFromRequest(w, r)
@@ -561,9 +562,9 @@ func (h *Handler) readMessages(w http.ResponseWriter, r *http.Request, spaceID s
 //	@Tags			events
 //	@Produce		text/event-stream
 //	@Param			spaceID	path	string	true	"Space ID"
-//	@Success		200		"SSE stream of ioa.Message events"
-//	@Failure		404		{object}	ioa.ErrorResponse	"Space not found"
-//	@Failure		500		{object}	ioa.ErrorResponse	"Streaming not supported"
+//	@Success		200		"SSE stream of protocols.Message events"
+//	@Failure		404		{object}	api.ErrorResponse	"Space not found"
+//	@Failure		500		{object}	api.ErrorResponse	"Streaming not supported"
 //	@Router			/spaces/{spaceID}/sse [get]
 func (h *Handler) sseSpace(w http.ResponseWriter, r *http.Request, spaceID string) {
 	h.sse(w, r, spaceID, "")
@@ -577,9 +578,9 @@ func (h *Handler) sseSpace(w http.ResponseWriter, r *http.Request, spaceID strin
 //	@Produce		text/event-stream
 //	@Param			spaceID		path	string	true	"Space ID"
 //	@Param			messageID	path	string	true	"Message ID to filter related events"
-//	@Success		200			"SSE stream of related ioa.Message events"
-//	@Failure		404			{object}	ioa.ErrorResponse	"Space or message not found"
-//	@Failure		500			{object}	ioa.ErrorResponse	"Streaming not supported"
+//	@Success		200			"SSE stream of related protocols.Message events"
+//	@Failure		404			{object}	api.ErrorResponse	"Space or message not found"
+//	@Failure		500			{object}	api.ErrorResponse	"Streaming not supported"
 //	@Router			/spaces/{spaceID}/messages/{messageID}/sse [get]
 func (h *Handler) sseMessage(w http.ResponseWriter, r *http.Request, spaceID, messageID string) {
 	h.sse(w, r, spaceID, messageID)
@@ -591,7 +592,7 @@ func (h *Handler) sse(w http.ResponseWriter, r *http.Request, spaceID, messageID
 		return
 	}
 	if messageID != "" {
-		if _, err := h.service.ReadMessages(r.Context(), spaceID, "", ioa.ReadOptions{MessageID: messageID}); err != nil {
+		if _, err := h.service.ReadMessages(r.Context(), spaceID, "", protocols.ReadOptions{MessageID: messageID}); err != nil {
 			writeServiceError(w, err)
 			return
 		}
@@ -636,7 +637,7 @@ func (h *Handler) sse(w http.ResponseWriter, r *http.Request, spaceID, messageID
 
 	seen := make(map[string]struct{})
 	if tracker != nil {
-		historical, _ := h.service.ReadMessages(r.Context(), spaceID, "", ioa.ReadOptions{All: true, After: headID})
+		historical, _ := h.service.ReadMessages(r.Context(), spaceID, "", protocols.ReadOptions{All: true, After: headID})
 		for _, msg := range historical {
 			deliver, fork := tracker.Accept(msg)
 			if !deliver {
@@ -707,9 +708,9 @@ func (h *Handler) sse(w http.ResponseWriter, r *http.Request, spaceID, messageID
 	}
 }
 
-func readOptionsFromRequest(w http.ResponseWriter, r *http.Request) (ioa.ReadOptions, bool) {
+func readOptionsFromRequest(w http.ResponseWriter, r *http.Request) (protocols.ReadOptions, bool) {
 	query := r.URL.Query()
-	opts := ioa.ReadOptions{
+	opts := protocols.ReadOptions{
 		MessageID: strings.TrimSpace(query.Get("message_id")),
 		After:     strings.TrimSpace(query.Get("after")),
 	}
@@ -717,23 +718,23 @@ func readOptionsFromRequest(w http.ResponseWriter, r *http.Request) (ioa.ReadOpt
 		all, err := strconv.ParseBool(query.Get("all"))
 		if err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "all must be a boolean")
-			return ioa.ReadOptions{}, false
+			return protocols.ReadOptions{}, false
 		}
 		opts.All = all
 	}
 	if query.Get("limit") != "" {
 		limit, ok := positiveIntQuery(w, query.Get("limit"), "limit")
 		if !ok {
-			return ioa.ReadOptions{}, false
+			return protocols.ReadOptions{}, false
 		}
 		opts.Limit = limit
 	}
 	return opts, true
 }
 
-func messageFilterFromRequest(w http.ResponseWriter, r *http.Request) (ioa.MessageFilter, bool) {
+func messageFilterFromRequest(w http.ResponseWriter, r *http.Request) (api.MessageFilter, bool) {
 	query := r.URL.Query()
-	filter := ioa.MessageFilter{
+	filter := api.MessageFilter{
 		SpaceID:    strings.TrimSpace(query.Get("space_id")),
 		MessageID:  strings.TrimSpace(query.Get("message_id")),
 		NodeID:     strings.TrimSpace(query.Get("node_id")),
@@ -745,19 +746,19 @@ func messageFilterFromRequest(w http.ResponseWriter, r *http.Request) (ioa.Messa
 	if query.Get("limit") != "" {
 		limit, ok := positiveIntQuery(w, query.Get("limit"), "limit")
 		if !ok {
-			return ioa.MessageFilter{}, false
+			return api.MessageFilter{}, false
 		}
 		filter.Limit = limit
 	}
 	return filter, true
 }
 
-func graphOptionsFromRequest(w http.ResponseWriter, r *http.Request) (ioa.GraphOptions, bool) {
+func graphOptionsFromRequest(w http.ResponseWriter, r *http.Request) (api.GraphOptions, bool) {
 	filter, ok := messageFilterFromRequest(w, r)
 	if !ok {
-		return ioa.GraphOptions{}, false
+		return api.GraphOptions{}, false
 	}
-	opts := ioa.GraphOptions{MessageFilter: filter}
+	opts := api.GraphOptions{MessageFilter: filter}
 	if raw := strings.TrimSpace(r.URL.Query().Get("include")); raw != "" {
 		for _, value := range strings.Split(raw, ",") {
 			opts.Include = append(opts.Include, strings.TrimSpace(value))
@@ -804,7 +805,7 @@ func writeServiceError(w http.ResponseWriter, err error) {
 func writeError(w http.ResponseWriter, status int, detail string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(ioa.ErrorResponse{Detail: detail})
+	_ = json.NewEncoder(w).Encode(api.ErrorResponse{Detail: detail})
 }
 
 func pathSegments(path string) []string {

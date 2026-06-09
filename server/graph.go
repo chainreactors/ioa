@@ -6,34 +6,35 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 )
 
-func (s *Service) GetGraph(ctx context.Context, opts ioa.GraphOptions) (ioa.GraphView, error) {
+func (s *Service) GetGraph(ctx context.Context, opts api.GraphOptions) (api.GraphView, error) {
 	return s.getGraph(ctx, opts)
 }
 
-func (s *Service) GetSpaceGraph(ctx context.Context, spaceID string, opts ioa.GraphOptions) (ioa.GraphView, error) {
+func (s *Service) GetSpaceGraph(ctx context.Context, spaceID string, opts api.GraphOptions) (api.GraphView, error) {
 	opts.SpaceID = spaceID
 	return s.getGraph(ctx, opts)
 }
 
-func (s *Service) getGraph(ctx context.Context, opts ioa.GraphOptions) (ioa.GraphView, error) {
+func (s *Service) getGraph(ctx context.Context, opts api.GraphOptions) (api.GraphView, error) {
 	include, err := graphIncludeSet(opts.Include)
 	if err != nil {
-		return ioa.GraphView{}, err
+		return api.GraphView{}, err
 	}
 	if err := s.validateMessageFilter(opts.MessageFilter); err != nil {
-		return ioa.GraphView{}, err
+		return api.GraphView{}, err
 	}
 	messages, err := s.graphMessages(opts.MessageFilter)
 	if err != nil {
-		return ioa.GraphView{}, err
+		return api.GraphView{}, err
 	}
 	return s.buildGraphView(ctx, opts.MessageFilter, messages, include)
 }
 
-func (s *Service) graphMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, error) {
+func (s *Service) graphMessages(filter api.MessageFilter) ([]protocols.Message, error) {
 	if filter.MessageID == "" {
 		return s.store.ListMessages(filter)
 	}
@@ -43,7 +44,7 @@ func (s *Service) graphMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, 
 			return nil, err
 		}
 		if !ok {
-			return nil, ioa.ProtocolError(http.StatusNotFound, "Message '%s' not found", filter.MessageID)
+			return nil, protocols.ProtocolError(http.StatusNotFound, "Message '%s' not found", filter.MessageID)
 		}
 		filter.SpaceID = record.SpaceID
 	}
@@ -57,14 +58,14 @@ func (s *Service) graphMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, 
 	return FilterMessages(records, filter), nil
 }
 
-func (s *Service) buildGraphView(ctx context.Context, filter ioa.MessageFilter, messages []ioa.MessageRecord, include map[string]bool) (ioa.GraphView, error) {
+func (s *Service) buildGraphView(ctx context.Context, filter api.MessageFilter, messages []protocols.Message, include map[string]bool) (api.GraphView, error) {
 	spaces, err := s.ListSpaces(ctx)
 	if err != nil {
-		return ioa.GraphView{}, err
+		return api.GraphView{}, err
 	}
 	nodes, err := s.ListNodes(ctx)
 	if err != nil {
-		return ioa.GraphView{}, err
+		return api.GraphView{}, err
 	}
 
 	spaceIDs := make(map[string]struct{})
@@ -116,13 +117,13 @@ func (s *Service) buildGraphView(ctx context.Context, filter ioa.MessageFilter, 
 		}
 	}
 
-	viewSpaces := make([]ioa.SpaceInfo, 0, len(spaces))
+	viewSpaces := make([]protocols.SpaceInfo, 0, len(spaces))
 	for _, space := range spaces {
 		if hasID(spaceIDs, space.ID) {
 			viewSpaces = append(viewSpaces, space)
 		}
 	}
-	viewNodes := make([]ioa.Node, 0, len(nodes))
+	viewNodes := make([]protocols.Node, 0, len(nodes))
 	for _, node := range nodes {
 		if hasID(nodeIDs, node.ID) {
 			viewNodes = append(viewNodes, node)
@@ -141,7 +142,7 @@ func (s *Service) buildGraphView(ctx context.Context, filter ioa.MessageFilter, 
 		return viewNodes[i].Name < viewNodes[j].Name
 	})
 
-	edges := make([]ioa.GraphEdge, 0)
+	edges := make([]api.GraphEdge, 0)
 	edgeKeys := make(map[string]struct{})
 	addEdge := func(source, target, kind string) {
 		key := source + "\x00" + target + "\x00" + kind
@@ -149,7 +150,7 @@ func (s *Service) buildGraphView(ctx context.Context, filter ioa.MessageFilter, 
 			return
 		}
 		edgeKeys[key] = struct{}{}
-		edges = append(edges, ioa.GraphEdge{Source: source, Target: target, Kind: kind})
+		edges = append(edges, api.GraphEdge{Source: source, Target: target, Kind: kind})
 	}
 	for _, space := range viewSpaces {
 		for _, member := range space.Nodes {
@@ -177,12 +178,12 @@ func (s *Service) buildGraphView(ctx context.Context, filter ioa.MessageFilter, 
 		}
 	}
 
-	view := ioa.GraphView{
+	view := api.GraphView{
 		Spaces:   viewSpaces,
 		Nodes:    viewNodes,
 		Messages: messages,
 		Edges:    edges,
-		Stats: ioa.GraphStats{
+		Stats: api.GraphStats{
 			SpaceCount:   len(viewSpaces),
 			NodeCount:    len(viewNodes),
 			MessageCount: len(messages),
@@ -190,23 +191,23 @@ func (s *Service) buildGraphView(ctx context.Context, filter ioa.MessageFilter, 
 		},
 	}
 	if !include["spaces"] {
-		view.Spaces = []ioa.SpaceInfo{}
+		view.Spaces = []protocols.SpaceInfo{}
 	}
 	if !include["nodes"] {
-		view.Nodes = []ioa.Node{}
+		view.Nodes = []protocols.Node{}
 	}
 	if !include["messages"] {
-		view.Messages = []ioa.MessageRecord{}
+		view.Messages = []protocols.Message{}
 	}
 	if !include["edges"] {
-		view.Edges = []ioa.GraphEdge{}
+		view.Edges = []api.GraphEdge{}
 	}
 	return view, nil
 }
 
-func (s *Service) validateMessageFilter(filter ioa.MessageFilter) error {
+func (s *Service) validateMessageFilter(filter api.MessageFilter) error {
 	if filter.Limit < 0 {
-		return ioa.ProtocolError(http.StatusUnprocessableEntity, "limit must be greater than 0")
+		return protocols.ProtocolError(http.StatusUnprocessableEntity, "limit must be greater than 0")
 	}
 	if filter.SpaceID != "" {
 		if _, err := s.requireSpace(filter.SpaceID); err != nil {
@@ -224,43 +225,43 @@ func (s *Service) validateMessageFilter(filter ioa.MessageFilter) error {
 		if _, ok, err := s.store.GetNode(nodeID); err != nil {
 			return err
 		} else if !ok {
-			return ioa.ProtocolError(http.StatusNotFound, "%s: node '%s' not found", field, nodeID)
+			return protocols.ProtocolError(http.StatusNotFound, "%s: node '%s' not found", field, nodeID)
 		}
 	}
 	if filter.MessageID != "" {
 		if _, ok, err := s.findMessage(filter.SpaceID, filter.MessageID); err != nil {
 			return err
 		} else if !ok {
-			return ioa.ProtocolError(http.StatusNotFound, "Message '%s' not found", filter.MessageID)
+			return protocols.ProtocolError(http.StatusNotFound, "Message '%s' not found", filter.MessageID)
 		}
 	}
 	if filter.RefMessage != "" {
 		if _, ok, err := s.findMessage(filter.SpaceID, filter.RefMessage); err != nil {
 			return err
 		} else if !ok {
-			return ioa.ProtocolError(http.StatusUnprocessableEntity, "ref_message: '%s' not found", filter.RefMessage)
+			return protocols.ProtocolError(http.StatusUnprocessableEntity, "ref_message: '%s' not found", filter.RefMessage)
 		}
 	}
 	if filter.After != "" {
 		if _, ok, err := s.findMessage(filter.SpaceID, filter.After); err != nil {
 			return err
 		} else if !ok {
-			return ioa.ProtocolError(http.StatusUnprocessableEntity, "after: '%s' not found", filter.After)
+			return protocols.ProtocolError(http.StatusUnprocessableEntity, "after: '%s' not found", filter.After)
 		}
 	}
 	return nil
 }
 
-func (s *Service) findMessage(spaceID, messageID string) (ioa.MessageRecord, bool, error) {
+func (s *Service) findMessage(spaceID, messageID string) (protocols.Message, bool, error) {
 	if spaceID != "" {
 		return s.store.GetMessage(spaceID, messageID)
 	}
-	records, err := s.store.ListMessages(ioa.MessageFilter{MessageID: messageID})
+	records, err := s.store.ListMessages(api.MessageFilter{MessageID: messageID})
 	if err != nil {
-		return ioa.MessageRecord{}, false, err
+		return protocols.Message{}, false, err
 	}
 	if len(records) == 0 {
-		return ioa.MessageRecord{}, false, nil
+		return protocols.Message{}, false, nil
 	}
 	return records[0], true, nil
 }
@@ -284,14 +285,14 @@ func graphIncludeSet(includes []string) (map[string]bool, error) {
 			continue
 		}
 		if _, ok := result[include]; !ok {
-			return nil, ioa.ProtocolError(http.StatusUnprocessableEntity, "include: unsupported value '%s'", include)
+			return nil, protocols.ProtocolError(http.StatusUnprocessableEntity, "include: unsupported value '%s'", include)
 		}
 		result[include] = true
 	}
 	return result, nil
 }
 
-func graphHasNoStructuralFilter(filter ioa.MessageFilter) bool {
+func graphHasNoStructuralFilter(filter api.MessageFilter) bool {
 	return filter.SpaceID == "" &&
 		filter.MessageID == "" &&
 		filter.NodeID == "" &&

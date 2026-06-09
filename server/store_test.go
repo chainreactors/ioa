@@ -5,7 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 )
 
 func runStoreProtocolTest(t *testing.T, store Store) {
@@ -13,19 +14,19 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	ctx := context.Background()
 	service := NewService(store, "")
 
-	nodeA, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-a"})
+	nodeA, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-a"})
 	if err != nil {
 		t.Fatalf("RegisterNode(a) error = %v", err)
 	}
 	if nodeA.Meta == nil || len(nodeA.Meta) != 0 {
 		t.Fatalf("nodeA meta = %#v, want empty map", nodeA.Meta)
 	}
-	nodeB, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-b"})
+	nodeB, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-b"})
 	if err != nil {
 		t.Fatalf("RegisterNode(b) error = %v", err)
 	}
 
-	space, err := service.CreateSpace(ctx, nodeA.ID, ioa.SpaceCreate{
+	space, err := service.CreateSpace(ctx, nodeA.ID, api.SpaceCreate{
 		Name:        "case",
 		Description: "owner",
 		Tags:        []string{"workspace:aide", "aide", "workspace:aide"},
@@ -33,7 +34,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	if err != nil {
 		t.Fatalf("CreateSpace() error = %v", err)
 	}
-	same, err := service.CreateSpace(ctx, nodeB.ID, ioa.SpaceCreate{
+	same, err := service.CreateSpace(ctx, nodeB.ID, api.SpaceCreate{
 		Name:        "case",
 		Description: "reviewer",
 		Tags:        []string{"checkpoint"},
@@ -51,29 +52,29 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 		t.Fatalf("space tags = %#v, want normalized merged tags", same.Tags)
 	}
 
-	root, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{Content: map[string]interface{}{"text": "root"}})
+	root, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{Content: map[string]interface{}{"text": "root"}})
 	if err != nil {
 		t.Fatalf("SendMessage(root) error = %v", err)
 	}
 	if root.Refs.Messages == nil || root.Refs.Nodes == nil || len(root.Refs.Messages) != 0 || len(root.Refs.Nodes) != 0 {
 		t.Fatalf("root refs = %#v, want empty slices", root.Refs)
 	}
-	directed, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+	directed, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "to-b"},
-		Refs:    &ioa.Ref{Nodes: []string{nodeB.ID}},
+		Refs:    &protocols.Ref{Nodes: []string{nodeB.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(directed) error = %v", err)
 	}
-	child, err := service.SendMessage(ctx, space.ID, nodeB.ID, ioa.SendMessage{
+	child, err := service.SendMessage(ctx, space.ID, nodeB.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "child"},
-		Refs:    &ioa.Ref{Messages: []string{root.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(child) error = %v", err)
 	}
 
-	start, err := service.ReadMessages(ctx, space.ID, "", ioa.ReadOptions{})
+	start, err := service.ReadMessages(ctx, space.ID, "", protocols.ReadOptions{})
 	if err != nil {
 		t.Fatalf("ReadMessages(start) error = %v", err)
 	}
@@ -81,7 +82,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 		t.Fatalf("start ids = %#v, want root only", got)
 	}
 
-	forNode, err := service.ReadMessages(ctx, space.ID, nodeB.ID, ioa.ReadOptions{})
+	forNode, err := service.ReadMessages(ctx, space.ID, nodeB.ID, protocols.ReadOptions{})
 	if err != nil {
 		t.Fatalf("ReadMessages(node) error = %v", err)
 	}
@@ -89,7 +90,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 		t.Fatalf("node ids = %#v, want directed", got)
 	}
 
-	related, err := service.ReadMessages(ctx, space.ID, "", ioa.ReadOptions{MessageID: root.ID})
+	related, err := service.ReadMessages(ctx, space.ID, "", protocols.ReadOptions{MessageID: root.ID})
 	if err != nil {
 		t.Fatalf("ReadMessages(related) error = %v", err)
 	}
@@ -97,7 +98,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 		t.Fatalf("related ids = %#v, want root+child", got)
 	}
 
-	allAfter, err := service.ReadMessages(ctx, space.ID, "", ioa.ReadOptions{All: true, After: root.ID, Limit: 1})
+	allAfter, err := service.ReadMessages(ctx, space.ID, "", protocols.ReadOptions{All: true, After: root.ID, Limit: 1})
 	if err != nil {
 		t.Fatalf("ReadMessages(all after) error = %v", err)
 	}
@@ -105,16 +106,16 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 		t.Fatalf("all after ids = %#v, want directed only", got)
 	}
 
-	emptyContent, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{Content: map[string]interface{}{}})
+	emptyContent, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{Content: map[string]interface{}{}})
 	if err != nil {
 		t.Fatalf("SendMessage(empty content) error = %v", err)
 	}
 	if emptyContent.Content == nil || len(emptyContent.Content) != 0 {
 		t.Fatalf("empty content = %#v, want empty map", emptyContent.Content)
 	}
-	nilRef, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+	nilRef, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "nil-ref-fields"},
-		Refs:    &ioa.Ref{},
+		Refs:    &protocols.Ref{},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(nil ref fields) error = %v", err)
@@ -123,18 +124,18 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 		t.Fatalf("nilRef refs = %#v, want non-nil empty slices", nilRef.Refs)
 	}
 
-	_, err = service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "bad"},
-		Refs:    &ioa.Ref{Messages: []string{"missing"}},
+		Refs:    &protocols.Ref{Messages: []string{"missing"}},
 	})
 	if err == nil || statusOf(err) != 422 {
 		t.Fatalf("missing ref error = %v, want 422", err)
 	}
-	_, err = service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{})
+	_, err = service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{})
 	if err == nil || statusOf(err) != 422 {
 		t.Fatalf("nil content error = %v, want 422", err)
 	}
-	all, err := service.ReadMessages(ctx, space.ID, "", ioa.ReadOptions{All: true})
+	all, err := service.ReadMessages(ctx, space.ID, "", protocols.ReadOptions{All: true})
 	if err != nil {
 		t.Fatalf("ReadMessages(all) error = %v", err)
 	}
@@ -143,7 +144,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	}
 
 	// Meta round-trip
-	metaMsg, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+	metaMsg, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "with-meta"},
 		Meta:    map[string]interface{}{"kind": "plan", "labels": []interface{}{"security", "review"}},
 	})
@@ -156,7 +157,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	if metaMsg.Meta["kind"] != "plan" {
 		t.Fatalf("meta.kind = %v, want plan", metaMsg.Meta["kind"])
 	}
-	readAll, err := service.ReadMessages(ctx, space.ID, "", ioa.ReadOptions{All: true})
+	readAll, err := service.ReadMessages(ctx, space.ID, "", protocols.ReadOptions{All: true})
 	if err != nil {
 		t.Fatalf("ReadMessages(all after meta) error = %v", err)
 	}
@@ -171,7 +172,7 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	}
 
 	// No meta — omitted
-	noMeta, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+	noMeta, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "no-meta"},
 	})
 	if err != nil {
@@ -187,11 +188,11 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	ctx := context.Background()
 	service := NewService(store, "")
 
-	node, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent"})
+	node, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent"})
 	if err != nil {
 		t.Fatalf("RegisterNode error = %v", err)
 	}
-	space, err := service.CreateSpace(ctx, node.ID, ioa.SpaceCreate{Name: "schema-test", Description: "tester"})
+	space, err := service.CreateSpace(ctx, node.ID, api.SpaceCreate{Name: "schema-test", Description: "tester"})
 	if err != nil {
 		t.Fatalf("CreateSpace error = %v", err)
 	}
@@ -206,7 +207,7 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	}
 
 	// Thread 1: root message sets schemaA
-	root1, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	root1, err := service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content:       map[string]interface{}{"text": "thread 1 root"},
 		ContentSchema: schemaA,
 	})
@@ -218,25 +219,25 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	}
 
 	// Declarative schema: replies are NOT constrained by root's schema
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"type": "task", "body": "do something"},
-		Refs:    &ioa.Ref{Messages: []string{root1.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root1.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(thread1 reply) error = %v", err)
 	}
 
 	// Any content shape in a reply is accepted (no constraint inheritance)
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"arbitrary": "fields"},
-		Refs:    &ioa.Ref{Messages: []string{root1.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root1.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(thread1 different shape) error = %v", err)
 	}
 
 	// Standalone root without schema: any content passes
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"arbitrary": "data"},
 	})
 	if err != nil {
@@ -244,7 +245,7 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	}
 
 	// Invalid schema is still rejected (schema itself must be valid)
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content:       map[string]interface{}{"text": "bad schema"},
 		ContentSchema: map[string]interface{}{"type": 123},
 	})
@@ -253,7 +254,7 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	}
 
 	// content_type is stored and returned
-	typed, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	typed, err := service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		ContentType: "checkpoint",
 		Content:     map[string]interface{}{"id": "cp-1", "title": "test"},
 	})
@@ -263,8 +264,8 @@ func runContentSchemaTest(t *testing.T, store Store) {
 	if typed.ContentType != "checkpoint" {
 		t.Fatalf("typed.ContentType = %q, want %q", typed.ContentType, "checkpoint")
 	}
-	if ioa.MessageContentType(typed) != "checkpoint" {
-		t.Fatalf("MessageContentType = %q, want checkpoint", ioa.MessageContentType(typed))
+	if protocols.MessageContentType(typed) != "checkpoint" {
+		t.Fatalf("MessageContentType = %q, want checkpoint", protocols.MessageContentType(typed))
 	}
 }
 
@@ -273,83 +274,83 @@ func runProjectionTest(t *testing.T, store Store) {
 	ctx := context.Background()
 	service := NewService(store, "")
 
-	nodeA, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-a"})
+	nodeA, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-a"})
 	if err != nil {
 		t.Fatalf("RegisterNode(a) error = %v", err)
 	}
-	nodeB, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-b"})
+	nodeB, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-b"})
 	if err != nil {
 		t.Fatalf("RegisterNode(b) error = %v", err)
 	}
-	nodeC, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-c"})
+	nodeC, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-c"})
 	if err != nil {
 		t.Fatalf("RegisterNode(c) error = %v", err)
 	}
 
-	space, err := service.CreateSpace(ctx, nodeA.ID, ioa.SpaceCreate{Name: "case", Description: "owner"})
+	space, err := service.CreateSpace(ctx, nodeA.ID, api.SpaceCreate{Name: "case", Description: "owner"})
 	if err != nil {
 		t.Fatalf("CreateSpace(case) error = %v", err)
 	}
-	if _, err := service.CreateSpace(ctx, nodeB.ID, ioa.SpaceCreate{Name: "case", Description: "reviewer"}); err != nil {
+	if _, err := service.CreateSpace(ctx, nodeB.ID, api.SpaceCreate{Name: "case", Description: "reviewer"}); err != nil {
 		t.Fatalf("CreateSpace(join case) error = %v", err)
 	}
-	otherSpace, err := service.CreateSpace(ctx, nodeC.ID, ioa.SpaceCreate{Name: "other", Description: "observer"})
+	otherSpace, err := service.CreateSpace(ctx, nodeC.ID, api.SpaceCreate{Name: "other", Description: "observer"})
 	if err != nil {
 		t.Fatalf("CreateSpace(other) error = %v", err)
 	}
 
-	root, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{Content: map[string]interface{}{"text": "root"}})
+	root, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{Content: map[string]interface{}{"text": "root"}})
 	if err != nil {
 		t.Fatalf("SendMessage(root) error = %v", err)
 	}
-	directed, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{
+	directed, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "to-b"},
-		Refs:    &ioa.Ref{Nodes: []string{nodeB.ID}},
+		Refs:    &protocols.Ref{Nodes: []string{nodeB.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(directed) error = %v", err)
 	}
-	child, err := service.SendMessage(ctx, space.ID, nodeB.ID, ioa.SendMessage{
+	child, err := service.SendMessage(ctx, space.ID, nodeB.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "child"},
-		Refs:    &ioa.Ref{Messages: []string{root.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(child) error = %v", err)
 	}
-	other, err := service.SendMessage(ctx, otherSpace.ID, nodeC.ID, ioa.SendMessage{Content: map[string]interface{}{"text": "other"}})
+	other, err := service.SendMessage(ctx, otherSpace.ID, nodeC.ID, protocols.SendMessage{Content: map[string]interface{}{"text": "other"}})
 	if err != nil {
 		t.Fatalf("SendMessage(other) error = %v", err)
 	}
 
-	all, err := service.ListMessages(ctx, ioa.MessageFilter{})
+	all, err := service.ListMessages(ctx, api.MessageFilter{})
 	if err != nil {
 		t.Fatalf("ListMessages(all) error = %v", err)
 	}
 	if len(all) != 4 || !containsRecordID(all, other.ID) {
 		t.Fatalf("ListMessages(all) = %#v, want four cross-space messages", recordIDs(all))
 	}
-	scoped, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID})
+	scoped, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(space) error = %v", err)
 	}
 	if got := recordIDs(scoped); !reflect.DeepEqual(got, []string{root.ID, directed.ID, child.ID}) {
 		t.Fatalf("ListMessages(space) ids = %#v, want root,directed,child", got)
 	}
-	connectedToB, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID, NodeID: nodeB.ID})
+	connectedToB, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID, NodeID: nodeB.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(node_id) error = %v", err)
 	}
 	if got := recordIDs(connectedToB); !reflect.DeepEqual(got, []string{directed.ID, child.ID}) {
 		t.Fatalf("ListMessages(node_id) ids = %#v, want directed,child", got)
 	}
-	refMessage, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
+	refMessage, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(ref_message) error = %v", err)
 	}
 	if got := recordIDs(refMessage); !reflect.DeepEqual(got, []string{child.ID}) {
 		t.Fatalf("ListMessages(ref_message) ids = %#v, want child", got)
 	}
-	refNode, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID, RefNode: nodeB.ID})
+	refNode, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID, RefNode: nodeB.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(ref_node) error = %v", err)
 	}
@@ -357,14 +358,14 @@ func runProjectionTest(t *testing.T, store Store) {
 		t.Fatalf("ListMessages(ref_node) ids = %#v, want directed", got)
 	}
 
-	graph, err := service.GetSpaceGraph(ctx, space.ID, ioa.GraphOptions{})
+	graph, err := service.GetSpaceGraph(ctx, space.ID, api.GraphOptions{})
 	if err != nil {
 		t.Fatalf("GetSpaceGraph() error = %v", err)
 	}
 	if graph.Stats.SpaceCount != 1 || graph.Stats.MessageCount != 3 {
 		t.Fatalf("graph stats = %#v, want one space and three messages", graph.Stats)
 	}
-	for _, edge := range []ioa.GraphEdge{
+	for _, edge := range []api.GraphEdge{
 		{Source: "space:" + space.ID, Target: "node:" + nodeA.ID, Kind: "member"},
 		{Source: "space:" + space.ID, Target: "node:" + nodeB.ID, Kind: "member"},
 		{Source: "node:" + nodeA.ID, Target: "message:" + root.ID, Kind: "sender"},
@@ -377,7 +378,7 @@ func runProjectionTest(t *testing.T, store Store) {
 		}
 	}
 
-	related, err := service.GetGraph(ctx, ioa.GraphOptions{MessageFilter: ioa.MessageFilter{MessageID: root.ID}})
+	related, err := service.GetGraph(ctx, api.GraphOptions{MessageFilter: api.MessageFilter{MessageID: root.ID}})
 	if err != nil {
 		t.Fatalf("GetGraph(message_id) error = %v", err)
 	}
@@ -398,7 +399,7 @@ func TestMemoryStoreProjections(t *testing.T) {
 	runProjectionTest(t, NewMemoryStore())
 }
 
-func messageIDs(messages []ioa.Message) []string {
+func messageIDs(messages []protocols.Message) []string {
 	ids := make([]string, 0, len(messages))
 	for _, message := range messages {
 		ids = append(ids, message.ID)
@@ -406,7 +407,7 @@ func messageIDs(messages []ioa.Message) []string {
 	return ids
 }
 
-func containsMessageID(messages []ioa.Message, want string) bool {
+func containsMessageID(messages []protocols.Message, want string) bool {
 	for _, message := range messages {
 		if message.ID == want {
 			return true
@@ -415,7 +416,7 @@ func containsMessageID(messages []ioa.Message, want string) bool {
 	return false
 }
 
-func recordIDs(messages []ioa.MessageRecord) []string {
+func recordIDs(messages []protocols.Message) []string {
 	ids := make([]string, 0, len(messages))
 	for _, message := range messages {
 		ids = append(ids, message.ID)
@@ -423,7 +424,7 @@ func recordIDs(messages []ioa.MessageRecord) []string {
 	return ids
 }
 
-func containsRecordID(messages []ioa.MessageRecord, want string) bool {
+func containsRecordID(messages []protocols.Message, want string) bool {
 	for _, message := range messages {
 		if message.ID == want {
 			return true
@@ -432,7 +433,7 @@ func containsRecordID(messages []ioa.MessageRecord, want string) bool {
 	return false
 }
 
-func hasGraphEdge(graph ioa.GraphView, want ioa.GraphEdge) bool {
+func hasGraphEdge(graph api.GraphView, want api.GraphEdge) bool {
 	for _, edge := range graph.Edges {
 		if edge == want {
 			return true

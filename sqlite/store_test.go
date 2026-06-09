@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 	"github.com/chainreactors/ioa/server"
 )
 
@@ -30,16 +32,16 @@ func TestSQLiteStoreProtocol(t *testing.T) {
 		t.Fatalf("ListNodes(empty) = %#v, want non-nil empty slice", nodes)
 	}
 
-	nodeA, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-a"})
+	nodeA, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-a"})
 	if err != nil {
 		t.Fatalf("RegisterNode(a) error = %v", err)
 	}
-	nodeB, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent-b"})
+	nodeB, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent-b"})
 	if err != nil {
 		t.Fatalf("RegisterNode(b) error = %v", err)
 	}
 
-	space, err := service.CreateSpace(ctx, nodeA.ID, ioa.SpaceCreate{
+	space, err := service.CreateSpace(ctx, nodeA.ID, api.SpaceCreate{
 		Name:        "case",
 		Description: "owner",
 		Tags:        []string{"workspace:aide", "aide"},
@@ -47,7 +49,7 @@ func TestSQLiteStoreProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSpace() error = %v", err)
 	}
-	space, err = service.CreateSpace(ctx, nodeB.ID, ioa.SpaceCreate{
+	space, err = service.CreateSpace(ctx, nodeB.ID, api.SpaceCreate{
 		Name:        "case",
 		Description: "reviewer",
 		Tags:        []string{"checkpoint", "aide"},
@@ -59,19 +61,19 @@ func TestSQLiteStoreProtocol(t *testing.T) {
 		t.Fatalf("space tags = %#v, want normalized merged tags", space.Tags)
 	}
 
-	root, err := service.SendMessage(ctx, space.ID, nodeA.ID, ioa.SendMessage{Content: map[string]interface{}{"text": "root"}})
+	root, err := service.SendMessage(ctx, space.ID, nodeA.ID, protocols.SendMessage{Content: map[string]interface{}{"text": "root"}})
 	if err != nil {
 		t.Fatalf("SendMessage(root) error = %v", err)
 	}
-	_, err = service.SendMessage(ctx, space.ID, nodeB.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, nodeB.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"text": "child"},
-		Refs:    &ioa.Ref{Messages: []string{root.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(child) error = %v", err)
 	}
 
-	all, err := service.ReadMessages(ctx, space.ID, "", ioa.ReadOptions{All: true})
+	all, err := service.ReadMessages(ctx, space.ID, "", protocols.ReadOptions{All: true})
 	if err != nil {
 		t.Fatalf("ReadMessages(all) error = %v", err)
 	}
@@ -79,14 +81,14 @@ func TestSQLiteStoreProtocol(t *testing.T) {
 		t.Fatalf("got %d messages, want 2", len(all))
 	}
 
-	records, err := service.ListMessages(ctx, ioa.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
+	records, err := service.ListMessages(ctx, api.MessageFilter{SpaceID: space.ID, RefMessage: root.ID})
 	if err != nil {
 		t.Fatalf("ListMessages(ref_message) error = %v", err)
 	}
 	if len(records) != 1 {
 		t.Fatalf("ListMessages(ref_message) got %d messages, want 1", len(records))
 	}
-	graph, err := service.GetSpaceGraph(ctx, space.ID, ioa.GraphOptions{})
+	graph, err := service.GetSpaceGraph(ctx, space.ID, api.GraphOptions{})
 	if err != nil {
 		t.Fatalf("GetSpaceGraph() error = %v", err)
 	}
@@ -105,11 +107,11 @@ func TestSQLiteStoreContentSchema(t *testing.T) {
 	ctx := context.Background()
 	service := server.NewService(store, "")
 
-	node, err := service.RegisterNode(ctx, ioa.NodeCreate{Name: "agent"})
+	node, err := service.RegisterNode(ctx, api.NodeCreate{Name: "agent"})
 	if err != nil {
 		t.Fatalf("RegisterNode error = %v", err)
 	}
-	space, err := service.CreateSpace(ctx, node.ID, ioa.SpaceCreate{Name: "schema-test", Description: "tester"})
+	space, err := service.CreateSpace(ctx, node.ID, api.SpaceCreate{Name: "schema-test", Description: "tester"})
 	if err != nil {
 		t.Fatalf("CreateSpace error = %v", err)
 	}
@@ -124,7 +126,7 @@ func TestSQLiteStoreContentSchema(t *testing.T) {
 	}
 
 	// Root message sets thread schema
-	root, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	root, err := service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content:       map[string]interface{}{"text": "root"},
 		ContentSchema: schema,
 	})
@@ -133,34 +135,34 @@ func TestSQLiteStoreContentSchema(t *testing.T) {
 	}
 
 	// Compliant reply passes
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"type": "task", "body": "do something"},
-		Refs:    &ioa.Ref{Messages: []string{root.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(compliant) error = %v", err)
 	}
 
 	// Non-compliant reply fails
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"wrong": "fields"},
-		Refs:    &ioa.Ref{Messages: []string{root.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root.ID}},
 	})
 	if err == nil {
 		t.Fatal("SendMessage(non-compliant) error = nil, want error")
 	}
 
 	// Different thread in same space with different schema
-	root2, err := service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	root2, err := service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content:       map[string]interface{}{"text": "root2"},
 		ContentSchema: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"status": map[string]interface{}{"type": "string"}}, "required": []interface{}{"status"}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(root2) error = %v", err)
 	}
-	_, err = service.SendMessage(ctx, space.ID, node.ID, ioa.SendMessage{
+	_, err = service.SendMessage(ctx, space.ID, node.ID, protocols.SendMessage{
 		Content: map[string]interface{}{"status": "ok"},
-		Refs:    &ioa.Ref{Messages: []string{root2.ID}},
+		Refs:    &protocols.Ref{Messages: []string{root2.ID}},
 	})
 	if err != nil {
 		t.Fatalf("SendMessage(thread2 compliant) error = %v", err)

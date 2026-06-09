@@ -3,43 +3,43 @@ package server
 import (
 	"sync"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/protocols"
 )
 
 type Hub struct {
 	mu              sync.Mutex
-	subscribers     map[string]map[chan ioa.Message]struct{}
-	nodeSubscribers map[string]map[chan ioa.Message]struct{}
+	subscribers     map[string]map[chan protocols.Message]struct{}
+	nodeSubscribers map[string]map[chan protocols.Message]struct{}
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		subscribers:     make(map[string]map[chan ioa.Message]struct{}),
-		nodeSubscribers: make(map[string]map[chan ioa.Message]struct{}),
+		subscribers:     make(map[string]map[chan protocols.Message]struct{}),
+		nodeSubscribers: make(map[string]map[chan protocols.Message]struct{}),
 	}
 }
 
-func (h *Hub) Subscribe(spaceID string) (<-chan ioa.Message, func()) {
+func (h *Hub) Subscribe(spaceID string) (<-chan protocols.Message, func()) {
 	return h.subscribe(h.subscribers, spaceID)
 }
 
-func (h *Hub) Broadcast(spaceID string, message ioa.Message) {
+func (h *Hub) Broadcast(spaceID string, message protocols.Message) {
 	h.broadcast(h.subscribers, spaceID, message)
 }
 
-func (h *Hub) SubscribeNode(nodeID string) (<-chan ioa.Message, func()) {
+func (h *Hub) SubscribeNode(nodeID string) (<-chan protocols.Message, func()) {
 	return h.subscribe(h.nodeSubscribers, nodeID)
 }
 
-func (h *Hub) BroadcastToNode(nodeID string, message ioa.Message) {
+func (h *Hub) BroadcastToNode(nodeID string, message protocols.Message) {
 	h.broadcast(h.nodeSubscribers, nodeID, message)
 }
 
-func (h *Hub) subscribe(buckets map[string]map[chan ioa.Message]struct{}, key string) (<-chan ioa.Message, func()) {
-	ch := make(chan ioa.Message, 16)
+func (h *Hub) subscribe(buckets map[string]map[chan protocols.Message]struct{}, key string) (<-chan protocols.Message, func()) {
+	ch := make(chan protocols.Message, 16)
 	h.mu.Lock()
 	if _, ok := buckets[key]; !ok {
-		buckets[key] = make(map[chan ioa.Message]struct{})
+		buckets[key] = make(map[chan protocols.Message]struct{})
 	}
 	buckets[key][ch] = struct{}{}
 	h.mu.Unlock()
@@ -56,7 +56,7 @@ func (h *Hub) subscribe(buckets map[string]map[chan ioa.Message]struct{}, key st
 	}
 }
 
-func (h *Hub) broadcast(buckets map[string]map[chan ioa.Message]struct{}, key string, message ioa.Message) {
+func (h *Hub) broadcast(buckets map[string]map[chan protocols.Message]struct{}, key string, message protocols.Message) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for ch := range buckets[key] {

@@ -3,8 +3,8 @@ package swarm
 import (
 	"encoding/json"
 
-	"github.com/chainreactors/ioa"
 	"github.com/chainreactors/ioa/skills"
+	"github.com/chainreactors/ioa/protocols"
 )
 
 type SwarmMessage struct {
@@ -73,7 +73,7 @@ func SwarmContent(msg SwarmMessage) map[string]any {
 	return m
 }
 
-func SwarmFromIOA(msg ioa.Message) (SwarmMessage, bool) {
+func SwarmFromIOA(msg protocols.Message) (SwarmMessage, bool) {
 	if sm, ok := ParseSwarm(msg.Content); ok {
 		return sm, true
 	}

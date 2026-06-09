@@ -13,7 +13,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 )
 
 type Client struct {
@@ -52,11 +53,11 @@ func (c *Client) NodeID() string {
 	return c.nodeID
 }
 
-func (c *Client) Register(ctx context.Context, accessKey, name, description string, meta map[string]interface{}) (ioa.AuthResponse, error) {
-	body := ioa.AuthRegister{Name: name, Description: description, AccessKey: accessKey, Meta: meta}
-	var resp ioa.AuthResponse
+func (c *Client) Register(ctx context.Context, accessKey, name, description string, meta map[string]interface{}) (api.AuthResponse, error) {
+	body := api.AuthRegister{Name: name, Description: description, AccessKey: accessKey, Meta: meta}
+	var resp api.AuthResponse
 	if err := c.do(ctx, http.MethodPost, "/auth/register", nil, body, &resp); err != nil {
-		return ioa.AuthResponse{}, err
+		return api.AuthResponse{}, err
 	}
 	c.token = resp.Token
 	c.nodeID = resp.ID
@@ -64,133 +65,133 @@ func (c *Client) Register(ctx context.Context, accessKey, name, description stri
 	return resp, nil
 }
 
-func (c *Client) ListSpaces(ctx context.Context) ([]ioa.SpaceInfo, error) {
-	var spaces []ioa.SpaceInfo
+func (c *Client) ListSpaces(ctx context.Context) ([]protocols.SpaceInfo, error) {
+	var spaces []protocols.SpaceInfo
 	if err := c.do(ctx, http.MethodGet, "/spaces", nil, nil, &spaces); err != nil {
 		return nil, err
 	}
 	return spaces, nil
 }
 
-func (c *Client) ListNodes(ctx context.Context) ([]ioa.Node, error) {
-	var nodes []ioa.Node
+func (c *Client) ListNodes(ctx context.Context) ([]protocols.Node, error) {
+	var nodes []protocols.Node
 	if err := c.do(ctx, http.MethodGet, "/nodes", nil, nil, &nodes); err != nil {
 		return nil, err
 	}
 	return nodes, nil
 }
 
-func (c *Client) ListMessages(ctx context.Context, filter ioa.MessageFilter) ([]ioa.MessageRecord, error) {
+func (c *Client) ListMessages(ctx context.Context, filter api.MessageFilter) ([]protocols.Message, error) {
 	endpoint := endpointWithQuery("/messages", messageFilterValues(filter))
-	var messages []ioa.MessageRecord
+	var messages []protocols.Message
 	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
 }
 
-func (c *Client) GetGraph(ctx context.Context, opts ioa.GraphOptions) (ioa.GraphView, error) {
+func (c *Client) GetGraph(ctx context.Context, opts api.GraphOptions) (api.GraphView, error) {
 	endpoint := endpointWithQuery("/graph", graphOptionsValues(opts))
-	var graph ioa.GraphView
+	var graph api.GraphView
 	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &graph); err != nil {
-		return ioa.GraphView{}, err
+		return api.GraphView{}, err
 	}
 	return graph, nil
 }
 
-func (c *Client) GetSpaceGraph(ctx context.Context, spaceID string, opts ioa.GraphOptions) (ioa.GraphView, error) {
+func (c *Client) GetSpaceGraph(ctx context.Context, spaceID string, opts api.GraphOptions) (api.GraphView, error) {
 	opts.SpaceID = ""
 	endpoint := endpointWithQuery("/spaces/"+url.PathEscape(spaceID)+"/graph", graphOptionsValues(opts))
-	var graph ioa.GraphView
+	var graph api.GraphView
 	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &graph); err != nil {
-		return ioa.GraphView{}, err
+		return api.GraphView{}, err
 	}
 	return graph, nil
 }
 
-func (c *Client) GetSpaceInfo(ctx context.Context, spaceID string) (ioa.SpaceInfo, error) {
-	var info ioa.SpaceInfo
+func (c *Client) GetSpaceInfo(ctx context.Context, spaceID string) (protocols.SpaceInfo, error) {
+	var info protocols.SpaceInfo
 	if err := c.do(ctx, http.MethodGet, "/spaces/"+url.PathEscape(spaceID), nil, nil, &info); err != nil {
-		return ioa.SpaceInfo{}, err
+		return protocols.SpaceInfo{}, err
 	}
 	return info, nil
 }
 
-func (c *Client) ResolveSpace(ctx context.Context, nameOrID string) (ioa.SpaceInfo, error) {
+func (c *Client) ResolveSpace(ctx context.Context, nameOrID string) (protocols.SpaceInfo, error) {
 	info, err := c.GetSpaceInfo(ctx, nameOrID)
 	if err == nil {
 		return info, nil
 	}
-	if pe, ok := err.(*ioa.Error); !ok || pe.Status != http.StatusNotFound {
-		return ioa.SpaceInfo{}, err
+	if pe, ok := err.(*protocols.Error); !ok || pe.Status != http.StatusNotFound {
+		return protocols.SpaceInfo{}, err
 	}
 	spaces, err := c.ListSpaces(ctx)
 	if err != nil {
-		return ioa.SpaceInfo{}, err
+		return protocols.SpaceInfo{}, err
 	}
 	for _, s := range spaces {
 		if s.Name == nameOrID {
 			return s, nil
 		}
 	}
-	return ioa.SpaceInfo{}, ioa.ProtocolError(http.StatusNotFound, "space %q not found", nameOrID)
+	return protocols.SpaceInfo{}, protocols.ProtocolError(http.StatusNotFound, "space %q not found", nameOrID)
 }
 
-func (c *Client) ReadPublic(ctx context.Context, spaceID string, opts ioa.ReadOptions) ([]ioa.Message, error) {
-	var messages []ioa.Message
+func (c *Client) ReadPublic(ctx context.Context, spaceID string, opts protocols.ReadOptions) ([]protocols.Message, error) {
+	var messages []protocols.Message
 	if err := c.do(ctx, http.MethodGet, readEndpoint(spaceID, opts), nil, nil, &messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
 }
 
-func (c *Client) RegisterNode(ctx context.Context, name, description string, meta map[string]interface{}) (ioa.Node, error) {
-	var node ioa.Node
-	if err := c.do(ctx, http.MethodPost, "/nodes", nil, ioa.NodeCreate{Name: name, Description: description, Meta: meta}, &node); err != nil {
-		return ioa.Node{}, err
+func (c *Client) RegisterNode(ctx context.Context, name, description string, meta map[string]interface{}) (protocols.Node, error) {
+	var node protocols.Node
+	if err := c.do(ctx, http.MethodPost, "/nodes", nil, api.NodeCreate{Name: name, Description: description, Meta: meta}, &node); err != nil {
+		return protocols.Node{}, err
 	}
 	c.nodeID = node.ID
 	return node, nil
 }
 
-func (c *Client) Space(ctx context.Context, name, description string, tags ...string) (ioa.SpaceInfo, error) {
+func (c *Client) Space(ctx context.Context, name, description string, tags ...string) (protocols.SpaceInfo, error) {
 	if c.nodeID == "" {
-		return ioa.SpaceInfo{}, fmt.Errorf("No node: call register_node() first")
+		return protocols.SpaceInfo{}, fmt.Errorf("No node: call register_node() first")
 	}
 	headers := map[string]string{"X-Node-ID": c.nodeID}
 	if c.accessKey != "" {
 		headers["X-Access-Key"] = c.accessKey
 	}
-	var info ioa.SpaceInfo
-	if err := c.do(ctx, http.MethodPost, "/spaces", headers, ioa.SpaceCreate{Name: name, Description: description, Tags: tags}, &info); err != nil {
-		return ioa.SpaceInfo{}, err
+	var info protocols.SpaceInfo
+	if err := c.do(ctx, http.MethodPost, "/spaces", headers, api.SpaceCreate{Name: name, Description: description, Tags: tags}, &info); err != nil {
+		return protocols.SpaceInfo{}, err
 	}
 	return info, nil
 }
 
-func (c *Client) Send(ctx context.Context, spaceID string, body ioa.SendMessage) (ioa.Message, error) {
+func (c *Client) Send(ctx context.Context, spaceID string, body protocols.SendMessage) (protocols.Message, error) {
 	if c.nodeID == "" {
-		return ioa.Message{}, fmt.Errorf("No sender: call register_node() first")
+		return protocols.Message{}, fmt.Errorf("No sender: call register_node() first")
 	}
-	var message ioa.Message
+	var message protocols.Message
 	if err := c.do(ctx, http.MethodPost, "/spaces/"+url.PathEscape(spaceID)+"/messages", map[string]string{"X-Node-ID": c.nodeID}, body, &message); err != nil {
-		return ioa.Message{}, err
+		return protocols.Message{}, err
 	}
 	return message, nil
 }
 
-func (c *Client) Read(ctx context.Context, spaceID string, opts ioa.ReadOptions) ([]ioa.Message, error) {
+func (c *Client) Read(ctx context.Context, spaceID string, opts protocols.ReadOptions) ([]protocols.Message, error) {
 	if c.nodeID == "" {
 		return nil, fmt.Errorf("No node: call register_node() first")
 	}
-	var messages []ioa.Message
+	var messages []protocols.Message
 	if err := c.do(ctx, http.MethodGet, readEndpoint(spaceID, opts), map[string]string{"X-Node-ID": c.nodeID}, nil, &messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
 }
 
-func (c *Client) Subscribe(ctx context.Context, spaceID string, opts ...SubscribeOption) (<-chan ioa.Message, <-chan error, func(), error) {
+func (c *Client) Subscribe(ctx context.Context, spaceID string, opts ...SubscribeOption) (<-chan protocols.Message, <-chan error, func(), error) {
 	target := *c.baseURL
 	target.Path = path.Join(c.baseURL.Path, "/spaces/"+url.PathEscape(spaceID)+"/sse")
 
@@ -229,12 +230,12 @@ func (c *Client) Subscribe(ctx context.Context, spaceID string, opts ...Subscrib
 			Detail string `json:"detail"`
 		}
 		if err := json.Unmarshal(data, &payload); err == nil && payload.Detail != "" {
-			return nil, nil, nil, ioa.ProtocolError(resp.StatusCode, "%s", payload.Detail)
+			return nil, nil, nil, protocols.ProtocolError(resp.StatusCode, "%s", payload.Detail)
 		}
-		return nil, nil, nil, ioa.ProtocolError(resp.StatusCode, "%s", strings.TrimSpace(string(data)))
+		return nil, nil, nil, protocols.ProtocolError(resp.StatusCode, "%s", strings.TrimSpace(string(data)))
 	}
 
-	messages := make(chan ioa.Message, 16)
+	messages := make(chan protocols.Message, 16)
 	errs := make(chan error, 1)
 	done := make(chan struct{})
 	cancel := func() {
@@ -259,7 +260,7 @@ func (c *Client) Subscribe(ctx context.Context, spaceID string, opts ...Subscrib
 			line := scanner.Text()
 			if line == "" {
 				if data.Len() > 0 {
-					var msg ioa.Message
+					var msg protocols.Message
 					if err := json.Unmarshal([]byte(data.String()), &msg); err != nil {
 						errs <- err
 						return
@@ -353,9 +354,9 @@ func (c *Client) do(ctx context.Context, method, endpoint string, headers map[st
 			Detail string `json:"detail"`
 		}
 		if err := json.Unmarshal(data, &payload); err == nil && payload.Detail != "" {
-			return ioa.ProtocolError(resp.StatusCode, "%s", payload.Detail)
+			return protocols.ProtocolError(resp.StatusCode, "%s", payload.Detail)
 		}
-		return ioa.ProtocolError(resp.StatusCode, "%s", strings.TrimSpace(string(data)))
+		return protocols.ProtocolError(resp.StatusCode, "%s", strings.TrimSpace(string(data)))
 	}
 	if out == nil {
 		return nil
@@ -366,7 +367,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, headers map[st
 	return json.Unmarshal(data, out)
 }
 
-func messageFilterValues(filter ioa.MessageFilter) url.Values {
+func messageFilterValues(filter api.MessageFilter) url.Values {
 	values := url.Values{}
 	if filter.SpaceID != "" {
 		values.Set("space_id", filter.SpaceID)
@@ -395,7 +396,7 @@ func messageFilterValues(filter ioa.MessageFilter) url.Values {
 	return values
 }
 
-func graphOptionsValues(opts ioa.GraphOptions) url.Values {
+func graphOptionsValues(opts api.GraphOptions) url.Values {
 	values := messageFilterValues(opts.MessageFilter)
 	if len(opts.Include) > 0 {
 		values.Set("include", strings.Join(opts.Include, ","))
@@ -403,7 +404,7 @@ func graphOptionsValues(opts ioa.GraphOptions) url.Values {
 	return values
 }
 
-func readEndpoint(spaceID string, opts ioa.ReadOptions) string {
+func readEndpoint(spaceID string, opts protocols.ReadOptions) string {
 	values := url.Values{}
 	if opts.MessageID != "" {
 		values.Set("message_id", opts.MessageID)

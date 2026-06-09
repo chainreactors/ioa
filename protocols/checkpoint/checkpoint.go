@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chainreactors/ioa"
 	"github.com/chainreactors/ioa/protocols"
 )
 
@@ -14,42 +13,41 @@ func init() {
 	protocols.Register(&protocols.Protocol{
 		Name:        "checkpoint",
 		Description: "Human-in-the-loop review protocol",
-		Send: []protocols.SubcommandDef{{
-			Name:        "checkpoint",
+		Send: &protocols.Handler{
 			Description: "Submit a checkpoint for human review",
-			Data:        &SendFlags{},
+			Flags:       &SendFlags{},
 			Execute:     execSend,
-		}},
-		Read: []protocols.SubcommandDef{{
-			Name:        "checkpoint",
+		},
+		Read: &protocols.Handler{
 			Description: "Read checkpoint messages",
-			Data:        &ReadFlags{},
+			Flags:       &ReadFlags{},
 			Execute:     execRead,
-		}},
+		},
 	})
 }
 
 type SendFlags struct {
-	Kind    string `long:"kind" json:"kind" required:"yes" description:"Checkpoint kind (verify, sniper, deep)"`
-	Title   string `long:"title" json:"title" required:"yes" description:"Short checkpoint title"`
-	Content string `long:"content" json:"content" description:"Markdown body with evidence"`
-	Target  string `long:"target" json:"target" description:"Target host:port or URL"`
-	Status  string `long:"status" json:"status" description:"Verification status (confirmed, not_confirmed, info, inconclusive)"`
+	Kind    string `long:"kind" json:"kind" description:"Checkpoint kind"`
+	Title   string `long:"title" json:"title" description:"Checkpoint title"`
+	Content string `long:"content" json:"content" description:"Checkpoint content"`
+	Target  string `long:"target" json:"target" description:"Target for the checkpoint"`
+	Status  string `long:"status" json:"status" description:"Checkpoint status"`
 }
 
 type ReadFlags struct {
-	After string `long:"after" json:"after" description:"Read checkpoints after this message ID"`
-	Limit int    `long:"limit" json:"limit" description:"Maximum number of messages"`
+	After string `long:"after" json:"after" description:"Read messages after this ID"`
+	Limit int    `long:"limit" json:"limit" description:"Max number of messages to read"`
 }
 
-func execSend(ctx context.Context, env *protocols.Env) (string, error) {
-	flags := protocols.FlagsFrom[SendFlags](env)
+func execSend(ctx context.Context, env *protocols.Env, args interface{}) (string, error) {
+	var flags SendFlags
+	protocols.ParseArgs(args, &flags)
 	if flags.Kind == "" || flags.Title == "" {
 		return "", fmt.Errorf("checkpoint: --kind and --title are required")
 	}
 
 	content := map[string]interface{}{
-		"id":    ioa.NewID(),
+		"id":    protocols.NewID(),
 		"kind":  flags.Kind,
 		"title": flags.Title,
 	}
@@ -63,17 +61,18 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 		content["status"] = NormalizeStatus(flags.Status)
 	}
 
-	msg, err := env.Client.Send(ctx, env.SpaceID, ioa.SendMessage{ContentType: "checkpoint", Content: content})
+	msg, err := env.Client.Send(ctx, env.SpaceID, protocols.SendMessage{ContentType: "checkpoint", Content: content})
 	if err != nil {
 		return "", err
 	}
 	return encodeResult(msg)
 }
 
-func execRead(ctx context.Context, env *protocols.Env) (string, error) {
-	flags := protocols.FlagsFrom[ReadFlags](env)
+func execRead(ctx context.Context, env *protocols.Env, args interface{}) (string, error) {
+	var flags ReadFlags
+	protocols.ParseArgs(args, &flags)
 
-	opts := ioa.ReadOptions{All: true}
+	opts := protocols.ReadOptions{All: true}
 	if flags.After != "" {
 		opts.After = flags.After
 	}
@@ -86,9 +85,9 @@ func execRead(ctx context.Context, env *protocols.Env) (string, error) {
 		return "", err
 	}
 
-	var checkpoints []ioa.Message
+	var checkpoints []protocols.Message
 	for _, m := range messages {
-		if ioa.MessageContentType(m) == "checkpoint" {
+		if protocols.MessageContentType(m) == "checkpoint" {
 			checkpoints = append(checkpoints, m)
 		}
 	}

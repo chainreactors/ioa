@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/chainreactors/ioa"
 	"github.com/chainreactors/ioa/protocols"
 )
 
@@ -13,35 +12,34 @@ func init() {
 	protocols.Register(&protocols.Protocol{
 		Name:        "swarm",
 		Description: "Autonomous multi-agent coordination",
-		Send: []protocols.SubcommandDef{{
-			Name:        "swarm",
+		Send: &protocols.Handler{
 			Description: "Send a swarm message or broadcast a task",
-			Data:        &SendFlags{},
+			Flags:       &SendFlags{},
 			Execute:     execSend,
-		}},
-		Read: []protocols.SubcommandDef{{
-			Name:        "swarm",
+		},
+		Read: &protocols.Handler{
 			Description: "Read swarm messages",
-			Data:        &ReadFlags{},
+			Flags:       &ReadFlags{},
 			Execute:     execRead,
-		}},
+		},
 	})
 }
 
 type SendFlags struct {
-	Content string `long:"content" json:"content" required:"yes" description:"Message content"`
-	Targets string `long:"targets" json:"targets" description:"Comma-separated operational targets"`
-	Task    bool   `long:"task" json:"task" description:"Mark as task broadcast (all idle nodes pick up)"`
+	Content string `long:"content" json:"content" description:"Message content"`
+	Targets string `long:"targets" json:"targets" description:"Comma-separated targets"`
+	Task    bool   `long:"task" json:"task" description:"Mark as task broadcast"`
 }
 
 type ReadFlags struct {
-	After string `long:"after" json:"after" description:"Read messages after this ID"`
-	Limit int    `long:"limit" json:"limit" description:"Maximum number of messages"`
-	Kind  string `long:"kind" json:"kind" description:"Filter by message kind (e.g. task_dispatch)"`
+	After string `long:"after" json:"after" description:"Read after message ID"`
+	Limit int    `long:"limit" json:"limit" description:"Max messages"`
+	Kind  string `long:"kind" json:"kind" description:"Filter by kind"`
 }
 
-func execSend(ctx context.Context, env *protocols.Env) (string, error) {
-	flags := protocols.FlagsFrom[SendFlags](env)
+func execSend(ctx context.Context, env *protocols.Env, args interface{}) (string, error) {
+	var flags SendFlags
+	protocols.ParseArgs(args, &flags)
 
 	msg := SwarmMessage{Content: flags.Content}
 	if flags.Targets != "" {
@@ -50,7 +48,7 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 		}
 	}
 
-	body := ioa.SendMessage{ContentType: "swarm", Content: SwarmContent(msg)}
+	body := protocols.SendMessage{ContentType: "swarm", Content: SwarmContent(msg)}
 	if flags.Task {
 		body.Content["task"] = true
 	}
@@ -62,10 +60,11 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 	return encodeResult(sent)
 }
 
-func execRead(ctx context.Context, env *protocols.Env) (string, error) {
-	flags := protocols.FlagsFrom[ReadFlags](env)
+func execRead(ctx context.Context, env *protocols.Env, args interface{}) (string, error) {
+	var flags ReadFlags
+	protocols.ParseArgs(args, &flags)
 
-	opts := ioa.ReadOptions{All: true}
+	opts := protocols.ReadOptions{All: true}
 	if flags.After != "" {
 		opts.After = flags.After
 	}
@@ -78,7 +77,7 @@ func execRead(ctx context.Context, env *protocols.Env) (string, error) {
 		return "", err
 	}
 
-	var swarmMsgs []ioa.Message
+	var swarmMsgs []protocols.Message
 	for _, m := range messages {
 		if _, ok := ParseSwarm(m.Content); ok {
 			swarmMsgs = append(swarmMsgs, m)
@@ -88,7 +87,7 @@ func execRead(ctx context.Context, env *protocols.Env) (string, error) {
 	}
 
 	if flags.Kind != "" {
-		var filtered []ioa.Message
+		var filtered []protocols.Message
 		for _, m := range swarmMsgs {
 			sm, _ := SwarmFromIOA(m)
 			if MessageKind(m, sm) == flags.Kind {

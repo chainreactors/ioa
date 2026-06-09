@@ -8,7 +8,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 	"github.com/chainreactors/ioa/server"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -26,7 +27,7 @@ func (b *mcpBridge) ensureNode(ctx context.Context) (string, error) {
 	if b.nodeID != "" {
 		return b.nodeID, nil
 	}
-	node, err := b.service.RegisterNode(ctx, ioa.NodeCreate{
+	node, err := b.service.RegisterNode(ctx, api.NodeCreate{
 		Name: "mcp-client",
 		Meta: map[string]interface{}{"transport": "mcp"},
 	})
@@ -81,8 +82,8 @@ func registerMCPTools(s *mcpserver.MCPServer, bridge *mcpBridge) {
 }
 
 type mcpSpaceResult struct {
-	ioa.SpaceInfo
-	StartMessages []ioa.Message `json:"start_messages"`
+	protocols.SpaceInfo
+	StartMessages []protocols.Message `json:"start_messages"`
 }
 
 func (b *mcpBridge) handleSpace(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -100,7 +101,7 @@ func (b *mcpBridge) handleSpace(ctx context.Context, request mcp.CallToolRequest
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	info, err := b.service.CreateSpace(ctx, nodeID, ioa.SpaceCreate{
+	info, err := b.service.CreateSpace(ctx, nodeID, api.SpaceCreate{
 		Name:        name,
 		Description: description,
 		Tags:        request.GetStringSlice("tags", nil),
@@ -109,7 +110,7 @@ func (b *mcpBridge) handleSpace(ctx context.Context, request mcp.CallToolRequest
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	startMessages, err := b.service.ReadMessages(ctx, info.ID, "", ioa.ReadOptions{})
+	startMessages, err := b.service.ReadMessages(ctx, info.ID, "", protocols.ReadOptions{})
 	if err != nil {
 		return marshalToolResult(info)
 	}
@@ -129,10 +130,10 @@ func (b *mcpBridge) handleSend(ctx context.Context, request mcp.CallToolRequest)
 		return mcp.NewToolResultError("content is required and must be a JSON object"), nil
 	}
 
-	var refs *ioa.Ref
+	var refs *protocols.Ref
 	if refsRaw, hasRefs := args["refs"]; hasRefs && refsRaw != nil {
 		data, _ := json.Marshal(refsRaw)
-		refs = &ioa.Ref{}
+		refs = &protocols.Ref{}
 		_ = json.Unmarshal(data, refs)
 	}
 
@@ -155,7 +156,7 @@ func (b *mcpBridge) handleSend(ctx context.Context, request mcp.CallToolRequest)
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	message, err := b.service.SendMessage(ctx, spaceID, nodeID, ioa.SendMessage{
+	message, err := b.service.SendMessage(ctx, spaceID, nodeID, protocols.SendMessage{
 		Content:       content,
 		Refs:          refs,
 		Meta:          meta,
@@ -186,7 +187,7 @@ func (b *mcpBridge) handleRead(ctx context.Context, request mcp.CallToolRequest)
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	messages, err := b.service.ReadMessages(ctx, spaceID, nodeID, ioa.ReadOptions{
+	messages, err := b.service.ReadMessages(ctx, spaceID, nodeID, protocols.ReadOptions{
 		MessageID: messageID,
 		After:     after,
 		Limit:     limit,

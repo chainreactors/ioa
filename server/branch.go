@@ -3,7 +3,7 @@ package server
 import (
 	"slices"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/protocols"
 )
 
 // HeadTracker implements branch-aware filtering for SSE connections.
@@ -40,7 +40,7 @@ func NewHeadTracker(store Store, spaceID, head string, forkDepth int) (*HeadTrac
 //   - deliver=true, fork=false: message extends the branch (refs HEAD)
 //   - deliver=true, fork=true:  message forks from an ancestor within depth
 //   - deliver=false:            unrelated message
-func (ht *HeadTracker) Accept(msg ioa.Message) (deliver, fork bool) {
+func (ht *HeadTracker) Accept(msg protocols.Message) (deliver, fork bool) {
 	if len(msg.Refs.Messages) == 0 {
 		return false, false
 	}

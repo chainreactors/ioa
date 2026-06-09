@@ -12,7 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chainreactors/ioa"
+	"github.com/chainreactors/ioa/api"
+	"github.com/chainreactors/ioa/protocols"
 	"github.com/chainreactors/ioa/server"
 	gormsqlite "github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -110,7 +111,7 @@ func (s *SQLiteStore) initSchema() error {
 	)
 }
 
-func (s *SQLiteStore) PutNode(node ioa.Node) error {
+func (s *SQLiteStore) PutNode(node protocols.Node) error {
 	model, err := makeNodeModel(node)
 	if err != nil {
 		return err
@@ -121,31 +122,31 @@ func (s *SQLiteStore) PutNode(node ioa.Node) error {
 	}).Create(&model).Error
 }
 
-func (s *SQLiteStore) GetNode(nodeID string) (ioa.Node, bool, error) {
+func (s *SQLiteStore) GetNode(nodeID string) (protocols.Node, bool, error) {
 	var model nodeModel
 	if err := s.db.Where(&nodeModel{ID: nodeID}).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ioa.Node{}, false, nil
+			return protocols.Node{}, false, nil
 		}
-		return ioa.Node{}, false, err
+		return protocols.Node{}, false, err
 	}
 	node, err := model.toNode()
 	return node, err == nil, err
 }
 
-func (s *SQLiteStore) GetNodeByName(name string) (ioa.Node, bool, error) {
+func (s *SQLiteStore) GetNodeByName(name string) (protocols.Node, bool, error) {
 	var model nodeModel
 	if err := s.db.Where("name = ?", name).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ioa.Node{}, false, nil
+			return protocols.Node{}, false, nil
 		}
-		return ioa.Node{}, false, err
+		return protocols.Node{}, false, err
 	}
 	node, err := model.toNode()
 	return node, err == nil, err
 }
 
-func (s *SQLiteStore) ListNodes() ([]ioa.Node, error) {
+func (s *SQLiteStore) ListNodes() ([]protocols.Node, error) {
 	var models []nodeModel
 	if err := s.db.
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "name"}}).
@@ -153,7 +154,7 @@ func (s *SQLiteStore) ListNodes() ([]ioa.Node, error) {
 		Find(&models).Error; err != nil {
 		return nil, err
 	}
-	result := make([]ioa.Node, 0, len(models))
+	result := make([]protocols.Node, 0, len(models))
 	for _, model := range models {
 		node, err := model.toNode()
 		if err != nil {
@@ -164,14 +165,14 @@ func (s *SQLiteStore) ListNodes() ([]ioa.Node, error) {
 	return result, nil
 }
 
-func (s *SQLiteStore) ListSpaces() ([]ioa.Space, error) {
+func (s *SQLiteStore) ListSpaces() ([]protocols.Space, error) {
 	var models []spaceModel
 	if err := s.db.
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "name"}}).
 		Find(&models).Error; err != nil {
 		return nil, err
 	}
-	result := make([]ioa.Space, 0, len(models))
+	result := make([]protocols.Space, 0, len(models))
 	for _, model := range models {
 		space, err := model.toSpace()
 		if err != nil {
@@ -182,8 +183,8 @@ func (s *SQLiteStore) ListSpaces() ([]ioa.Space, error) {
 	return result, nil
 }
 
-func (s *SQLiteStore) PutSpaceIfAbsent(space ioa.Space) (ioa.Space, error) {
-	var result ioa.Space
+func (s *SQLiteStore) PutSpaceIfAbsent(space protocols.Space) (protocols.Space, error) {
+	var result protocols.Space
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		model, err := makeSpaceModel(space)
 		if err != nil {
@@ -204,7 +205,7 @@ func (s *SQLiteStore) PutSpaceIfAbsent(space ioa.Space) (ioa.Space, error) {
 		if err != nil {
 			return err
 		}
-		mergedTags := ioa.MergeTags(existingTags, space.Tags)
+		mergedTags := protocols.MergeTags(existingTags, space.Tags)
 		if !slices.Equal(existingTags, mergedTags) {
 			encoded, err := encodeTagsJSON(mergedTags)
 			if err != nil {
@@ -223,13 +224,13 @@ func (s *SQLiteStore) PutSpaceIfAbsent(space ioa.Space) (ioa.Space, error) {
 	return result, err
 }
 
-func (s *SQLiteStore) GetSpace(spaceID string) (ioa.Space, bool, error) {
+func (s *SQLiteStore) GetSpace(spaceID string) (protocols.Space, bool, error) {
 	var model spaceModel
 	if err := s.db.Where(&spaceModel{ID: spaceID}).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ioa.Space{}, false, nil
+			return protocols.Space{}, false, nil
 		}
-		return ioa.Space{}, false, err
+		return protocols.Space{}, false, err
 	}
 	space, err := model.toSpace()
 	return space, err == nil, err
@@ -243,12 +244,12 @@ func (s *SQLiteStore) JoinSpace(spaceID, nodeID, description string) error {
 	}).Create(&model).Error
 }
 
-func (s *SQLiteStore) GetSpaceNodes(spaceID string) ([]ioa.SpaceNodeRecord, error) {
+func (s *SQLiteStore) GetSpaceNodes(spaceID string) ([]protocols.Node, error) {
 	var memberships []spaceNodeModel
 	if err := s.db.Where(&spaceNodeModel{SpaceID: spaceID}).Find(&memberships).Error; err != nil {
 		return nil, err
 	}
-	result := make([]ioa.SpaceNodeRecord, 0, len(memberships))
+	result := make([]protocols.Node, 0, len(memberships))
 	for _, membership := range memberships {
 		node, ok, err := s.GetNode(membership.NodeID)
 		if err != nil {
@@ -257,18 +258,19 @@ func (s *SQLiteStore) GetSpaceNodes(spaceID string) ([]ioa.SpaceNodeRecord, erro
 		if !ok {
 			continue
 		}
-		result = append(result, ioa.SpaceNodeRecord{Node: node, Description: membership.Description})
+		node.Description = membership.Description
+		result = append(result, node)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		if result[i].Node.Name == result[j].Node.Name {
-			return result[i].Node.ID < result[j].Node.ID
+		if result[i].Name == result[j].Name {
+			return result[i].ID < result[j].ID
 		}
-		return result[i].Node.Name < result[j].Node.Name
+		return result[i].Name < result[j].Name
 	})
 	return result, nil
 }
 
-func (s *SQLiteStore) AppendMessage(message ioa.MessageRecord) error {
+func (s *SQLiteStore) AppendMessage(message protocols.Message) error {
 	model, err := makeMessageModel(message)
 	if err != nil {
 		return err
@@ -276,24 +278,24 @@ func (s *SQLiteStore) AppendMessage(message ioa.MessageRecord) error {
 	return s.db.Create(&model).Error
 }
 
-func (s *SQLiteStore) GetMessage(spaceID, messageID string) (ioa.MessageRecord, bool, error) {
+func (s *SQLiteStore) GetMessage(spaceID, messageID string) (protocols.Message, bool, error) {
 	var model messageModel
 	if err := s.db.Where(&messageModel{SpaceID: spaceID, ID: messageID}).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ioa.MessageRecord{}, false, nil
+			return protocols.Message{}, false, nil
 		}
-		return ioa.MessageRecord{}, false, err
+		return protocols.Message{}, false, err
 	}
 	message, err := model.toMessage()
 	return message, err == nil, err
 }
 
-func (s *SQLiteStore) GetMessagesForNode(spaceID, nodeID, after string, limit int) ([]ioa.MessageRecord, error) {
+func (s *SQLiteStore) GetMessagesForNode(spaceID, nodeID, after string, limit int) ([]protocols.Message, error) {
 	all, err := s.allMessages(spaceID)
 	if err != nil {
 		return nil, err
 	}
-	messages := make([]ioa.MessageRecord, 0, len(all))
+	messages := make([]protocols.Message, 0, len(all))
 	for _, message := range all {
 		if server.ContainsString(message.Refs.Nodes, nodeID) {
 			messages = append(messages, message)
@@ -310,7 +312,7 @@ func (s *SQLiteStore) GetMessageCount(spaceID string) (int, error) {
 	return int(count), nil
 }
 
-func (s *SQLiteStore) GetMessages(spaceID, after string, limit int) ([]ioa.MessageRecord, error) {
+func (s *SQLiteStore) GetMessages(spaceID, after string, limit int) ([]protocols.Message, error) {
 	all, err := s.allMessages(spaceID)
 	if err != nil {
 		return nil, err
@@ -318,12 +320,12 @@ func (s *SQLiteStore) GetMessages(spaceID, after string, limit int) ([]ioa.Messa
 	return server.WindowMessages(all, all, after, limit), nil
 }
 
-func (s *SQLiteStore) GetStartMessages(spaceID, after string, limit int) ([]ioa.MessageRecord, error) {
+func (s *SQLiteStore) GetStartMessages(spaceID, after string, limit int) ([]protocols.Message, error) {
 	all, err := s.allMessages(spaceID)
 	if err != nil {
 		return nil, err
 	}
-	messages := make([]ioa.MessageRecord, 0, len(all))
+	messages := make([]protocols.Message, 0, len(all))
 	for _, message := range all {
 		if len(message.Refs.Messages) == 0 && len(message.Refs.Nodes) == 0 {
 			messages = append(messages, message)
@@ -332,7 +334,7 @@ func (s *SQLiteStore) GetStartMessages(spaceID, after string, limit int) ([]ioa.
 	return server.WindowMessages(messages, all, after, limit), nil
 }
 
-func (s *SQLiteStore) GetRelatedMessages(spaceID, messageID, after string, limit int) ([]ioa.MessageRecord, error) {
+func (s *SQLiteStore) GetRelatedMessages(spaceID, messageID, after string, limit int) ([]protocols.Message, error) {
 	all, err := s.allMessages(spaceID)
 	if err != nil {
 		return nil, err
@@ -340,7 +342,7 @@ func (s *SQLiteStore) GetRelatedMessages(spaceID, messageID, after string, limit
 	return server.RelatedMessages(all, messageID, after, limit), nil
 }
 
-func (s *SQLiteStore) GetInboxMessages(nodeID, after string, limit int) ([]ioa.MessageRecord, error) {
+func (s *SQLiteStore) GetInboxMessages(nodeID, after string, limit int) ([]protocols.Message, error) {
 	var memberships []spaceNodeModel
 	if err := s.db.Where(&spaceNodeModel{NodeID: nodeID}).Find(&memberships).Error; err != nil {
 		return nil, err
@@ -351,7 +353,7 @@ func (s *SQLiteStore) GetInboxMessages(nodeID, after string, limit int) ([]ioa.M
 	}
 	sort.Strings(spaceIDs)
 
-	var allMessages []ioa.MessageRecord
+	var allMessages []protocols.Message
 	for _, spaceID := range spaceIDs {
 		messages, err := s.allMessages(spaceID)
 		if err != nil {
@@ -359,7 +361,7 @@ func (s *SQLiteStore) GetInboxMessages(nodeID, after string, limit int) ([]ioa.M
 		}
 		allMessages = append(allMessages, messages...)
 	}
-	filtered := make([]ioa.MessageRecord, 0, len(allMessages))
+	filtered := make([]protocols.Message, 0, len(allMessages))
 	for _, message := range allMessages {
 		if server.ContainsString(message.Refs.Nodes, nodeID) {
 			filtered = append(filtered, message)
@@ -368,7 +370,7 @@ func (s *SQLiteStore) GetInboxMessages(nodeID, after string, limit int) ([]ioa.M
 	return server.WindowMessages(filtered, allMessages, after, limit), nil
 }
 
-func (s *SQLiteStore) ListMessages(filter ioa.MessageFilter) ([]ioa.MessageRecord, error) {
+func (s *SQLiteStore) ListMessages(filter api.MessageFilter) ([]protocols.Message, error) {
 	query := s.db.Model(&messageModel{})
 	if filter.SpaceID != "" {
 		query = query.Where(&messageModel{SpaceID: filter.SpaceID})
@@ -401,18 +403,18 @@ func (s *SQLiteStore) PutToken(tokenHash string, nodeID string) error {
 	}).Create(&tokenModel{Hash: tokenHash, NodeID: nodeID}).Error
 }
 
-func (s *SQLiteStore) GetNodeByTokenHash(tokenHash string) (ioa.Node, bool, error) {
+func (s *SQLiteStore) GetNodeByTokenHash(tokenHash string) (protocols.Node, bool, error) {
 	var model tokenModel
 	if err := s.db.Where(&tokenModel{Hash: tokenHash}).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ioa.Node{}, false, nil
+			return protocols.Node{}, false, nil
 		}
-		return ioa.Node{}, false, err
+		return protocols.Node{}, false, err
 	}
 	return s.GetNode(model.NodeID)
 }
 
-func (s *SQLiteStore) allMessages(spaceID string) ([]ioa.MessageRecord, error) {
+func (s *SQLiteStore) allMessages(spaceID string) ([]protocols.Message, error) {
 	var models []messageModel
 	if err := s.db.Where(&messageModel{SpaceID: spaceID}).
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "seq"}}).
@@ -422,7 +424,7 @@ func (s *SQLiteStore) allMessages(spaceID string) ([]ioa.MessageRecord, error) {
 	return decodeMessageModels(models)
 }
 
-func makeNodeModel(node ioa.Node) (nodeModel, error) {
+func makeNodeModel(node protocols.Node) (nodeModel, error) {
 	meta, err := encodeJSON(defaultMap(node.Meta))
 	if err != nil {
 		return nodeModel{}, err
@@ -430,10 +432,10 @@ func makeNodeModel(node ioa.Node) (nodeModel, error) {
 	return nodeModel{ID: node.ID, Name: node.Name, Description: node.Description, MetaJSON: meta}, nil
 }
 
-func (m nodeModel) toNode() (ioa.Node, error) {
-	node := ioa.Node{ID: m.ID, Name: m.Name, Description: m.Description, Meta: map[string]interface{}{}}
+func (m nodeModel) toNode() (protocols.Node, error) {
+	node := protocols.Node{ID: m.ID, Name: m.Name, Description: m.Description, Meta: map[string]interface{}{}}
 	if err := decodeJSON(m.MetaJSON, &node.Meta); err != nil {
-		return ioa.Node{}, err
+		return protocols.Node{}, err
 	}
 	if node.Meta == nil {
 		node.Meta = map[string]interface{}{}
@@ -441,7 +443,7 @@ func (m nodeModel) toNode() (ioa.Node, error) {
 	return node, nil
 }
 
-func makeSpaceModel(space ioa.Space) (spaceModel, error) {
+func makeSpaceModel(space protocols.Space) (spaceModel, error) {
 	tags, err := encodeTagsJSON(space.Tags)
 	if err != nil {
 		return spaceModel{}, err
@@ -449,15 +451,15 @@ func makeSpaceModel(space ioa.Space) (spaceModel, error) {
 	return spaceModel{ID: space.ID, Name: space.Name, TagsJSON: tags}, nil
 }
 
-func (m spaceModel) toSpace() (ioa.Space, error) {
+func (m spaceModel) toSpace() (protocols.Space, error) {
 	tags, err := decodeTagsJSON(m.TagsJSON)
 	if err != nil {
-		return ioa.Space{}, err
+		return protocols.Space{}, err
 	}
-	return ioa.Space{ID: m.ID, Name: m.Name, Tags: tags}, nil
+	return protocols.Space{ID: m.ID, Name: m.Name, Tags: tags}, nil
 }
 
-func makeMessageModel(message ioa.MessageRecord) (messageModel, error) {
+func makeMessageModel(message protocols.Message) (messageModel, error) {
 	content, err := encodeJSON(message.Content)
 	if err != nil {
 		return messageModel{}, err
@@ -493,8 +495,8 @@ func makeMessageModel(message ioa.MessageRecord) (messageModel, error) {
 	}, nil
 }
 
-func (m messageModel) toMessage() (ioa.MessageRecord, error) {
-	message := ioa.MessageRecord{
+func (m messageModel) toMessage() (protocols.Message, error) {
+	message := protocols.Message{
 		ID:          m.ID,
 		SpaceID:     m.SpaceID,
 		Sender:      m.Sender,
@@ -503,10 +505,10 @@ func (m messageModel) toMessage() (ioa.MessageRecord, error) {
 		Content:     map[string]interface{}{},
 	}
 	if err := decodeJSON(m.ContentJSON, &message.Content); err != nil {
-		return ioa.MessageRecord{}, err
+		return protocols.Message{}, err
 	}
 	if err := decodeJSON(m.RefsJSON, &message.Refs); err != nil {
-		return ioa.MessageRecord{}, err
+		return protocols.Message{}, err
 	}
 	if message.Refs.Messages == nil {
 		message.Refs.Messages = []string{}
@@ -517,20 +519,20 @@ func (m messageModel) toMessage() (ioa.MessageRecord, error) {
 	if strings.TrimSpace(m.MetaJSON) != "" {
 		message.Meta = map[string]interface{}{}
 		if err := decodeJSON(m.MetaJSON, &message.Meta); err != nil {
-			return ioa.MessageRecord{}, err
+			return protocols.Message{}, err
 		}
 	}
 	if strings.TrimSpace(m.ContentSchemaJSON) != "" {
 		message.ContentSchema = map[string]interface{}{}
 		if err := decodeJSON(m.ContentSchemaJSON, &message.ContentSchema); err != nil {
-			return ioa.MessageRecord{}, err
+			return protocols.Message{}, err
 		}
 	}
 	return message, nil
 }
 
-func decodeMessageModels(models []messageModel) ([]ioa.MessageRecord, error) {
-	messages := make([]ioa.MessageRecord, 0, len(models))
+func decodeMessageModels(models []messageModel) ([]protocols.Message, error) {
+	messages := make([]protocols.Message, 0, len(models))
 	for _, model := range models {
 		message, err := model.toMessage()
 		if err != nil {
@@ -542,7 +544,7 @@ func decodeMessageModels(models []messageModel) ([]ioa.MessageRecord, error) {
 }
 
 func encodeTagsJSON(tags []string) (string, error) {
-	tags = ioa.NormalizeTags(tags)
+	tags = protocols.NormalizeTags(tags)
 	if len(tags) == 0 {
 		return "", nil
 	}
@@ -558,7 +560,7 @@ func decodeTagsJSON(raw string) ([]string, error) {
 	if err := decodeJSON(raw, &tags); err != nil {
 		return nil, err
 	}
-	return ioa.NormalizeTags(tags), nil
+	return protocols.NormalizeTags(tags), nil
 }
 
 func encodeJSON(value any) (string, error) {

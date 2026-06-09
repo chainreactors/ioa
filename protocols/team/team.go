@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/chainreactors/ioa"
 	"github.com/chainreactors/ioa/protocols"
 	"github.com/chainreactors/ioa/skills"
 )
@@ -14,34 +13,33 @@ func init() {
 	protocols.Register(&protocols.Protocol{
 		Name:        "team",
 		Description: "Named-group communication within a workspace",
-		Send: []protocols.SubcommandDef{{
-			Name:        "team",
+		Send: &protocols.Handler{
 			Description: "Broadcast a message to a named group",
-			Data:        &SendFlags{},
+			Flags:       &SendFlags{},
 			Execute:     execSend,
-		}},
-		Read: []protocols.SubcommandDef{{
-			Name:        "team",
+		},
+		Read: &protocols.Handler{
 			Description: "Read team messages",
-			Data:        &ReadFlags{},
+			Flags:       &ReadFlags{},
 			Execute:     execRead,
-		}},
+		},
 	})
 }
 
 type SendFlags struct {
-	Team string `long:"team" json:"team" required:"yes" description:"Group name"`
-	Text string `long:"text" json:"text" required:"yes" description:"Message body"`
+	Team string `long:"team" json:"team" description:"Target team name"`
+	Text string `long:"text" json:"text" description:"Message text"`
 }
 
 type ReadFlags struct {
 	Team  string `long:"team" json:"team" description:"Filter by team name"`
 	After string `long:"after" json:"after" description:"Read messages after this ID"`
-	Limit int    `long:"limit" json:"limit" description:"Maximum number of messages"`
+	Limit int    `long:"limit" json:"limit" description:"Max number of messages to read"`
 }
 
-func execSend(ctx context.Context, env *protocols.Env) (string, error) {
-	flags := protocols.FlagsFrom[SendFlags](env)
+func execSend(ctx context.Context, env *protocols.Env, args interface{}) (string, error) {
+	var flags SendFlags
+	protocols.ParseArgs(args, &flags)
 	if flags.Team == "" || flags.Text == "" {
 		return "", fmt.Errorf("team: --team and --text are required")
 	}
@@ -51,17 +49,18 @@ func execSend(ctx context.Context, env *protocols.Env) (string, error) {
 		"text": flags.Text,
 	}
 
-	msg, err := env.Client.Send(ctx, env.SpaceID, ioa.SendMessage{ContentType: "team", Content: content})
+	msg, err := env.Client.Send(ctx, env.SpaceID, protocols.SendMessage{ContentType: "team", Content: content})
 	if err != nil {
 		return "", err
 	}
 	return encodeResult(msg)
 }
 
-func execRead(ctx context.Context, env *protocols.Env) (string, error) {
-	flags := protocols.FlagsFrom[ReadFlags](env)
+func execRead(ctx context.Context, env *protocols.Env, args interface{}) (string, error) {
+	var flags ReadFlags
+	protocols.ParseArgs(args, &flags)
 
-	opts := ioa.ReadOptions{All: true}
+	opts := protocols.ReadOptions{All: true}
 	if flags.After != "" {
 		opts.After = flags.After
 	}
@@ -74,9 +73,9 @@ func execRead(ctx context.Context, env *protocols.Env) (string, error) {
 		return "", err
 	}
 
-	var teamMsgs []ioa.Message
+	var teamMsgs []protocols.Message
 	for _, m := range messages {
-		if ioa.MessageContentType(m) != "team" {
+		if protocols.MessageContentType(m) != "team" {
 			continue
 		}
 		if flags.Team != "" {
