@@ -1,6 +1,4 @@
-//go:build mcp
-
-package ioamcp
+package server
 
 import (
 	"context"
@@ -10,13 +8,12 @@ import (
 
 	"github.com/chainreactors/ioa/api"
 	"github.com/chainreactors/ioa/protocols"
-	"github.com/chainreactors/ioa/server"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 type mcpBridge struct {
-	service *server.Service
+	service *Service
 	nodeID  string
 	mu      sync.Mutex
 }
@@ -38,20 +35,10 @@ func (b *mcpBridge) ensureNode(ctx context.Context) (string, error) {
 	return b.nodeID, nil
 }
 
-func WithMCP(handler http.Handler, service *server.Service) http.Handler {
+func newMCPHandler(service *Service) http.Handler {
 	bridge := &mcpBridge{service: service}
 	s := mcpserver.NewMCPServer("ioa", "1.0.0")
-	registerMCPTools(s, bridge)
 
-	mcpHandler := mcpserver.NewStreamableHTTPServer(s)
-
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcpHandler)
-	mux.Handle("/", handler)
-	return mux
-}
-
-func registerMCPTools(s *mcpserver.MCPServer, bridge *mcpBridge) {
 	spaceTool := mcp.NewTool("ioa_space",
 		mcp.WithDescription("Create or join an IOA message space for collaboration with other nodes. Returns space info with id, name, nodes, and message count."),
 		mcp.WithString("name", mcp.Required(), mcp.Description("IOA space name")),
@@ -66,7 +53,7 @@ func registerMCPTools(s *mcpserver.MCPServer, bridge *mcpBridge) {
 		mcp.WithObject("content", mcp.Required(), mcp.Description("Structured message content")),
 		mcp.WithObject("refs", mcp.Description("Optional references: {\"messages\": [\"msg-id\"], \"nodes\": [\"node-id\"]}")),
 		mcp.WithObject("meta", mcp.Description("Optional metadata for the message (e.g. kind, labels, ttl). Not part of content; used for routing, filtering, and lifecycle.")),
-		mcp.WithObject("content_schema", mcp.Description("Optional JSON Schema to set on the thread. Attaches to the thread's root message. All subsequent messages in the same thread must conform to this schema.")),
+		mcp.WithObject("content_schema", mcp.Description("Optional JSON Schema to set on the thread. Attaches to the thread's root message.")),
 	)
 	s.AddTool(sendTool, bridge.handleSend)
 
@@ -79,6 +66,8 @@ func registerMCPTools(s *mcpserver.MCPServer, bridge *mcpBridge) {
 		mcp.WithBoolean("all", mcp.Description("Read all messages instead of only messages addressed to this node")),
 	)
 	s.AddTool(readTool, bridge.handleRead)
+
+	return mcpserver.NewStreamableHTTPServer(s)
 }
 
 type mcpSpaceResult struct {
@@ -95,12 +84,10 @@ func (b *mcpBridge) handleSpace(ctx context.Context, request mcp.CallToolRequest
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
 	nodeID, err := b.ensureNode(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
 	info, err := b.service.CreateSpace(ctx, nodeID, api.SpaceCreate{
 		Name:        name,
 		Description: description,
@@ -109,13 +96,11 @@ func (b *mcpBridge) handleSpace(ctx context.Context, request mcp.CallToolRequest
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
 	startMessages, err := b.service.ReadMessages(ctx, info.ID, "", protocols.ReadOptions{})
 	if err != nil {
-		return marshalToolResult(info)
+		return mcpMarshalResult(info)
 	}
-
-	return marshalToolResult(mcpSpaceResult{SpaceInfo: info, StartMessages: startMessages})
+	return mcpMarshalResult(mcpSpaceResult{SpaceInfo: info, StartMessages: startMessages})
 }
 
 func (b *mcpBridge) handleSend(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -123,39 +108,29 @@ func (b *mcpBridge) handleSend(ctx context.Context, request mcp.CallToolRequest)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
 	args := request.GetArguments()
 	content, ok := args["content"].(map[string]interface{})
 	if !ok || content == nil {
 		return mcp.NewToolResultError("content is required and must be a JSON object"), nil
 	}
-
 	var refs *protocols.Ref
 	if refsRaw, hasRefs := args["refs"]; hasRefs && refsRaw != nil {
 		data, _ := json.Marshal(refsRaw)
 		refs = &protocols.Ref{}
 		_ = json.Unmarshal(data, refs)
 	}
-
 	var meta map[string]interface{}
-	if metaRaw, has := args["meta"]; has && metaRaw != nil {
-		if m, ok := metaRaw.(map[string]interface{}); ok {
-			meta = m
-		}
+	if m, ok := args["meta"].(map[string]interface{}); ok {
+		meta = m
 	}
-
 	var contentSchema map[string]interface{}
-	if schemaRaw, has := args["content_schema"]; has && schemaRaw != nil {
-		if m, ok := schemaRaw.(map[string]interface{}); ok {
-			contentSchema = m
-		}
+	if m, ok := args["content_schema"].(map[string]interface{}); ok {
+		contentSchema = m
 	}
-
 	nodeID, err := b.ensureNode(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
 	message, err := b.service.SendMessage(ctx, spaceID, nodeID, protocols.SendMessage{
 		Content:       content,
 		Refs:          refs,
@@ -165,8 +140,7 @@ func (b *mcpBridge) handleSend(ctx context.Context, request mcp.CallToolRequest)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
-	return marshalToolResult(message)
+	return mcpMarshalResult(message)
 }
 
 func (b *mcpBridge) handleRead(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -174,11 +148,9 @@ func (b *mcpBridge) handleRead(ctx context.Context, request mcp.CallToolRequest)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
 	messageID := request.GetString("message_id", "")
 	after := request.GetString("after", "")
 	limit := request.GetInt("limit", 0)
-
 	args := request.GetArguments()
 	all, _ := args["all"].(bool)
 
@@ -186,7 +158,6 @@ func (b *mcpBridge) handleRead(ctx context.Context, request mcp.CallToolRequest)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
 	messages, err := b.service.ReadMessages(ctx, spaceID, nodeID, protocols.ReadOptions{
 		MessageID: messageID,
 		After:     after,
@@ -196,11 +167,10 @@ func (b *mcpBridge) handleRead(ctx context.Context, request mcp.CallToolRequest)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
-	return marshalToolResult(messages)
+	return mcpMarshalResult(messages)
 }
 
-func marshalToolResult(v interface{}) (*mcp.CallToolResult, error) {
+func mcpMarshalResult(v interface{}) (*mcp.CallToolResult, error) {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return nil, err

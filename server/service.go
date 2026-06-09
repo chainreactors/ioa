@@ -196,7 +196,10 @@ func (s *Service) ReadMessages(ctx context.Context, spaceID, callerNodeID string
 		} else if !ok {
 			return nil, protocols.ProtocolError(http.StatusNotFound, "Message '%s' not found in space '%s'", opts.MessageID, spaceID)
 		}
-		records, err = s.store.GetRelatedMessages(spaceID, opts.MessageID, opts.After, opts.Limit)
+		if opts.Direction != "" && opts.Direction != "upstream" && opts.Direction != "downstream" {
+			return nil, protocols.ProtocolError(http.StatusUnprocessableEntity, "direction must be 'upstream' or 'downstream'")
+		}
+		records, err = s.store.GetRelatedMessages(spaceID, opts.MessageID, opts.Direction, opts.After, opts.Limit)
 	} else if opts.All {
 		records, err = s.store.GetMessages(spaceID, opts.After, opts.Limit)
 	} else if callerNodeID != "" {
@@ -244,7 +247,7 @@ func (s *Service) ListMessages(ctx context.Context, filter api.MessageFilter) ([
 }
 
 func (s *Service) IsRelated(ctx context.Context, spaceID, rootMessageID, messageID string) (bool, error) {
-	records, err := s.store.GetRelatedMessages(spaceID, rootMessageID, "", 0)
+	records, err := s.store.GetRelatedMessages(spaceID, rootMessageID, "", "", 0)
 	if err != nil {
 		return false, err
 	}
@@ -290,6 +293,67 @@ func (s *Service) ResolveToken(token string) (protocols.Node, error) {
 		return protocols.Node{}, protocols.ProtocolError(http.StatusUnauthorized, "invalid token")
 	}
 	return node, nil
+}
+
+func (s *Service) validateMessageFilter(filter api.MessageFilter) error {
+	if filter.Limit < 0 {
+		return protocols.ProtocolError(http.StatusUnprocessableEntity, "limit must be greater than 0")
+	}
+	if filter.SpaceID != "" {
+		if _, err := s.requireSpace(filter.SpaceID); err != nil {
+			return err
+		}
+	}
+	for field, nodeID := range map[string]string{
+		"node_id":  filter.NodeID,
+		"sender":   filter.Sender,
+		"ref_node": filter.RefNode,
+	} {
+		if nodeID == "" {
+			continue
+		}
+		if _, ok, err := s.store.GetNode(nodeID); err != nil {
+			return err
+		} else if !ok {
+			return protocols.ProtocolError(http.StatusNotFound, "%s: node '%s' not found", field, nodeID)
+		}
+	}
+	if filter.MessageID != "" {
+		if _, ok, err := s.findMessage(filter.SpaceID, filter.MessageID); err != nil {
+			return err
+		} else if !ok {
+			return protocols.ProtocolError(http.StatusNotFound, "Message '%s' not found", filter.MessageID)
+		}
+	}
+	if filter.RefMessage != "" {
+		if _, ok, err := s.findMessage(filter.SpaceID, filter.RefMessage); err != nil {
+			return err
+		} else if !ok {
+			return protocols.ProtocolError(http.StatusUnprocessableEntity, "ref_message: '%s' not found", filter.RefMessage)
+		}
+	}
+	if filter.After != "" {
+		if _, ok, err := s.findMessage(filter.SpaceID, filter.After); err != nil {
+			return err
+		} else if !ok {
+			return protocols.ProtocolError(http.StatusUnprocessableEntity, "after: '%s' not found", filter.After)
+		}
+	}
+	return nil
+}
+
+func (s *Service) findMessage(spaceID, messageID string) (protocols.Message, bool, error) {
+	if spaceID != "" {
+		return s.store.GetMessage(spaceID, messageID)
+	}
+	records, err := s.store.ListMessages(api.MessageFilter{MessageID: messageID})
+	if err != nil {
+		return protocols.Message{}, false, err
+	}
+	if len(records) == 0 {
+		return protocols.Message{}, false, nil
+	}
+	return records[0], true, nil
 }
 
 func (s *Service) callerNodeID(nodeID string) (string, error) {

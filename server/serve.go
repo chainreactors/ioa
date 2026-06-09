@@ -11,11 +11,9 @@ import (
 )
 
 type ServerOptions struct {
-	URL        string
-	DB         string
-	AccessKey  string
-	Store      Store
-	Middleware func(http.Handler, *Service) http.Handler
+	URL       string
+	AccessKey string
+	Store     Store
 }
 
 func RunServer(ctx context.Context, opts ServerOptions) error {
@@ -45,9 +43,14 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 	}
 
 	service := NewService(store, opts.AccessKey)
-	var handler http.Handler = NewHandler(service)
-	if opts.Middleware != nil {
-		handler = opts.Middleware(handler, service)
+
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", newMCPHandler(service))
+	mux.Handle("/", NewHandler(service))
+
+	var handler http.Handler = mux
+	if opts.AccessKey != "" {
+		handler = AuthMiddleware(service)(mux)
 	}
 
 	srv := &http.Server{Addr: host, Handler: handler}
@@ -58,11 +61,6 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 		_ = srv.Shutdown(shutCtx)
 	}()
 
-	storeLabel := "memory"
-	if opts.DB != "" {
-		storeLabel = opts.DB
-	}
-	log.Printf("[*] ioa_server store=%s", storeLabel)
 	log.Printf("[*] ioa_server status=starting url=%s://%s", scheme, host)
 
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

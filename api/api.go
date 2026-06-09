@@ -1,7 +1,5 @@
 package api
 
-import "github.com/chainreactors/ioa/protocols"
-
 type NodeCreate struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
@@ -23,32 +21,6 @@ type MessageFilter struct {
 	RefNode    string
 	After      string
 	Limit      int
-}
-
-type GraphOptions struct {
-	MessageFilter
-	Include []string
-}
-
-type GraphEdge struct {
-	Source string `json:"source"`
-	Target string `json:"target"`
-	Kind   string `json:"kind"`
-}
-
-type GraphStats struct {
-	SpaceCount   int `json:"space_count"`
-	NodeCount    int `json:"node_count"`
-	MessageCount int `json:"message_count"`
-	EdgeCount    int `json:"edge_count"`
-}
-
-type GraphView struct {
-	Spaces   []protocols.SpaceInfo `json:"spaces"`
-	Nodes    []protocols.Node      `json:"nodes"`
-	Messages []protocols.Message   `json:"messages"`
-	Edges    []GraphEdge           `json:"edges"`
-	Stats    GraphStats            `json:"stats"`
 }
 
 type AuthRegister struct {

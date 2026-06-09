@@ -90,25 +90,6 @@ func (c *Client) ListMessages(ctx context.Context, filter api.MessageFilter) ([]
 	return messages, nil
 }
 
-func (c *Client) GetGraph(ctx context.Context, opts api.GraphOptions) (api.GraphView, error) {
-	endpoint := endpointWithQuery("/graph", graphOptionsValues(opts))
-	var graph api.GraphView
-	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &graph); err != nil {
-		return api.GraphView{}, err
-	}
-	return graph, nil
-}
-
-func (c *Client) GetSpaceGraph(ctx context.Context, spaceID string, opts api.GraphOptions) (api.GraphView, error) {
-	opts.SpaceID = ""
-	endpoint := endpointWithQuery("/spaces/"+url.PathEscape(spaceID)+"/graph", graphOptionsValues(opts))
-	var graph api.GraphView
-	if err := c.do(ctx, http.MethodGet, endpoint, nil, nil, &graph); err != nil {
-		return api.GraphView{}, err
-	}
-	return graph, nil
-}
-
 func (c *Client) GetSpaceInfo(ctx context.Context, spaceID string) (protocols.SpaceInfo, error) {
 	var info protocols.SpaceInfo
 	if err := c.do(ctx, http.MethodGet, "/spaces/"+url.PathEscape(spaceID), nil, nil, &info); err != nil {
@@ -396,18 +377,13 @@ func messageFilterValues(filter api.MessageFilter) url.Values {
 	return values
 }
 
-func graphOptionsValues(opts api.GraphOptions) url.Values {
-	values := messageFilterValues(opts.MessageFilter)
-	if len(opts.Include) > 0 {
-		values.Set("include", strings.Join(opts.Include, ","))
-	}
-	return values
-}
-
 func readEndpoint(spaceID string, opts protocols.ReadOptions) string {
 	values := url.Values{}
 	if opts.MessageID != "" {
 		values.Set("message_id", opts.MessageID)
+	}
+	if opts.Direction != "" {
+		values.Set("direction", opts.Direction)
 	}
 	if opts.After != "" {
 		values.Set("after", opts.After)

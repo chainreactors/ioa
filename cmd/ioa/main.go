@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -30,7 +29,7 @@ type options struct {
 	URL      string `long:"url" env:"IOA_URL" description:"Server listen URL (serve) or target URL" default:"http://127.0.0.1:8765"`
 	Token    string `long:"token" env:"IOA_TOKEN" description:"Auth token for authenticated requests"`
 	NodeName string `long:"name" env:"IOA_NODE_NAME" description:"Node name for auto-registration" default:"ioa-client"`
-	DB       string `long:"db" description:"SQLite database path when built with -tags sqlite" default:"./ioa.db"`
+	DB       string `long:"db" description:"SQLite database path (empty or :memory: for in-memory)" default:"./ioa.db"`
 	Timeout  int    `long:"timeout" description:"Overall timeout in seconds" default:"3600"`
 	Debug    bool   `long:"debug" description:"Enable debug logging"`
 	Quiet    bool   `short:"q" long:"quiet" description:"Quiet mode"`
@@ -87,6 +86,7 @@ type sendCmd struct {
 type readCmd struct {
 	SpaceID   string `long:"space" short:"s" description:"Space ID" required:"yes"`
 	MessageID string `long:"message" short:"m" description:"Message ID for context retrieval"`
+	Direction string `long:"direction" short:"d" description:"Traversal direction: upstream, downstream (requires --message)"`
 	After     string `long:"after" description:"Cursor: read messages after this ID"`
 	Limit     int    `long:"limit" short:"l" description:"Maximum number of messages"`
 	All       bool   `long:"all" short:"a" description:"Read all messages (not just addressed to this node)"`
@@ -119,19 +119,22 @@ type nodesCmd struct {
 	} `positional-args:"yes"`
 }
 
-// Store and middleware hooks (overridden by build-tagged files)
-
-var (
-	openStore              = openMemoryStore
-	withOptionalMiddleware = passThroughMiddleware
-)
-
-func openMemoryStore(opts options) (server.Store, func() error, string, error) {
-	return server.NewMemoryStore(), func() error { return nil }, "memory", nil
-}
-
-func passThroughMiddleware(handler http.Handler, service *server.Service) http.Handler {
-	return handler
+func openStore(opts options) (server.Store, func() error, string, error) {
+	dbPath := opts.DB
+	if dbPath == "" || dbPath == ":memory:" {
+		store := server.NewMemoryStore()
+		return store, store.Close, "memory", nil
+	}
+	if !filepath.IsAbs(dbPath) {
+		if wd, err := os.Getwd(); err == nil {
+			dbPath = filepath.Join(wd, dbPath)
+		}
+	}
+	store, err := server.NewSQLiteStore(dbPath)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("open database: %s", err)
+	}
+	return store, store.Close, "sqlite:" + dbPath, nil
 }
 
 //	@title			IOA (Internet of Agent) API
@@ -388,6 +391,7 @@ func runReadDispatch(ctx context.Context, c *client.Client, nodeName string, cmd
 	}
 	msgs, err := c.Read(ctx, cmd.SpaceID, protocols.ReadOptions{
 		MessageID: cmd.MessageID,
+		Direction: cmd.Direction,
 		After:     cmd.After,
 		Limit:     cmd.Limit,
 		All:       cmd.All,
@@ -524,10 +528,9 @@ func runServe(opts options) error {
 	}
 
 	return server.RunServer(ctx, server.ServerOptions{
-		URL:        opts.URL,
-		AccessKey:  opts.Serve.AccessKey,
-		Store:      store,
-		Middleware: withOptionalMiddleware,
+		URL:       opts.URL,
+		AccessKey: opts.Serve.AccessKey,
+		Store:     store,
 	})
 }
 

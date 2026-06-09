@@ -37,8 +37,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.serveNodes(w, r, segments)
 	case "messages":
 		h.serveMessages(w, r, segments)
-	case "graph":
-		h.serveGraph(w, r, segments)
 	case "spaces":
 		h.serveSpaces(w, r, segments)
 	default:
@@ -128,14 +126,6 @@ func (h *Handler) serveMessages(w http.ResponseWriter, r *http.Request, segments
 		return
 	}
 	writeError(w, methodOrNotFound(r.Method, segments, "messages"), "not found")
-}
-
-func (h *Handler) serveGraph(w http.ResponseWriter, r *http.Request, segments []string) {
-	if len(segments) == 1 && r.Method == http.MethodGet {
-		h.getGraph(w, r)
-		return
-	}
-	writeError(w, methodOrNotFound(r.Method, segments, "graph"), "not found")
 }
 
 // registerNode registers a new node.
@@ -315,39 +305,6 @@ func (h *Handler) listMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, messages)
 }
 
-// getGraph returns the derived IOA topology.
-//
-//	@Summary		Get graph
-//	@Description	Return a normalized, read-only graph projection derived from spaces, nodes, messages, and refs.
-//	@Tags			graph
-//	@Produce		json
-//	@Param			space_id	query		string				false	"Space ID filter"
-//	@Param			message_id	query		string				false	"Message ID context filter"
-//	@Param			node_id		query		string				false	"Node-connected filter: sender or refs.nodes"
-//	@Param			sender		query		string				false	"Sender node ID filter"
-//	@Param			ref_message	query		string				false	"Referenced message ID filter"
-//	@Param			ref_node	query		string				false	"Referenced node ID filter"
-//	@Param			after		query		string				false	"Pagination cursor: return messages after this ID"
-//	@Param			limit		query		int					false	"Maximum number of messages to return"
-//	@Param			include		query		string				false	"Comma-separated sections: spaces,nodes,messages,edges"
-//	@Success		200			{object}	api.GraphView		"Graph projection"
-//	@Failure		404			{object}	api.ErrorResponse	"Filter target not found"
-//	@Failure		422			{object}	api.ErrorResponse	"Invalid query parameters"
-//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
-//	@Router			/graph [get]
-func (h *Handler) getGraph(w http.ResponseWriter, r *http.Request) {
-	opts, ok := graphOptionsFromRequest(w, r)
-	if !ok {
-		return
-	}
-	graph, err := h.service.GetGraph(r.Context(), opts)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, graph)
-}
-
 func (h *Handler) serveSpaces(w http.ResponseWriter, r *http.Request, segments []string) {
 	if len(segments) == 1 && r.Method == http.MethodPost {
 		h.createSpace(w, r)
@@ -367,11 +324,6 @@ func (h *Handler) serveSpaces(w http.ResponseWriter, r *http.Request, segments [
 
 	if len(segments) == 2 && r.Method == http.MethodGet {
 		h.getSpace(w, r, spaceID)
-		return
-	}
-
-	if len(segments) == 3 && segments[2] == "graph" && r.Method == http.MethodGet {
-		h.getSpaceGraph(w, r, spaceID)
 		return
 	}
 
@@ -462,39 +414,6 @@ func (h *Handler) getSpace(w http.ResponseWriter, r *http.Request, spaceID strin
 		return
 	}
 	writeJSON(w, http.StatusOK, info)
-}
-
-// getSpaceGraph returns the derived topology for one space.
-//
-//	@Summary		Get space graph
-//	@Description	Return a normalized, read-only graph projection scoped to a single space.
-//	@Tags			graph
-//	@Produce		json
-//	@Param			spaceID		path		string				true	"Space ID"
-//	@Param			message_id	query		string				false	"Message ID context filter"
-//	@Param			node_id		query		string				false	"Node-connected filter: sender or refs.nodes"
-//	@Param			sender		query		string				false	"Sender node ID filter"
-//	@Param			ref_message	query		string				false	"Referenced message ID filter"
-//	@Param			ref_node	query		string				false	"Referenced node ID filter"
-//	@Param			after		query		string				false	"Pagination cursor: return messages after this ID"
-//	@Param			limit		query		int					false	"Maximum number of messages to return"
-//	@Param			include		query		string				false	"Comma-separated sections: spaces,nodes,messages,edges"
-//	@Success		200			{object}	api.GraphView		"Graph projection"
-//	@Failure		404			{object}	api.ErrorResponse	"Space or filter target not found"
-//	@Failure		422			{object}	api.ErrorResponse	"Invalid query parameters"
-//	@Failure		500			{object}	api.ErrorResponse	"Internal server error"
-//	@Router			/spaces/{spaceID}/graph [get]
-func (h *Handler) getSpaceGraph(w http.ResponseWriter, r *http.Request, spaceID string) {
-	opts, ok := graphOptionsFromRequest(w, r)
-	if !ok {
-		return
-	}
-	graph, err := h.service.GetSpaceGraph(r.Context(), spaceID, opts)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, graph)
 }
 
 // sendMessage sends a message to a space.
@@ -712,6 +631,7 @@ func readOptionsFromRequest(w http.ResponseWriter, r *http.Request) (protocols.R
 	query := r.URL.Query()
 	opts := protocols.ReadOptions{
 		MessageID: strings.TrimSpace(query.Get("message_id")),
+		Direction: strings.TrimSpace(query.Get("direction")),
 		After:     strings.TrimSpace(query.Get("after")),
 	}
 	if query.Get("all") != "" {
@@ -751,20 +671,6 @@ func messageFilterFromRequest(w http.ResponseWriter, r *http.Request) (api.Messa
 		filter.Limit = limit
 	}
 	return filter, true
-}
-
-func graphOptionsFromRequest(w http.ResponseWriter, r *http.Request) (api.GraphOptions, bool) {
-	filter, ok := messageFilterFromRequest(w, r)
-	if !ok {
-		return api.GraphOptions{}, false
-	}
-	opts := api.GraphOptions{MessageFilter: filter}
-	if raw := strings.TrimSpace(r.URL.Query().Get("include")); raw != "" {
-		for _, value := range strings.Split(raw, ",") {
-			opts.Include = append(opts.Include, strings.TrimSpace(value))
-		}
-	}
-	return opts, true
 }
 
 func positiveIntQuery(w http.ResponseWriter, raw string, name string) (int, bool) {

@@ -50,6 +50,7 @@ type SendMessage struct {
 
 type ReadOptions struct {
 	MessageID string
+	Direction string // "upstream", "downstream", or "" (both)
 	After     string
 	Limit     int
 	All       bool

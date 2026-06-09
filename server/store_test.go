@@ -357,46 +357,24 @@ func runProjectionTest(t *testing.T, store Store) {
 	if got := recordIDs(refNode); !reflect.DeepEqual(got, []string{directed.ID}) {
 		t.Fatalf("ListMessages(ref_node) ids = %#v, want directed", got)
 	}
-
-	graph, err := service.GetSpaceGraph(ctx, space.ID, api.GraphOptions{})
-	if err != nil {
-		t.Fatalf("GetSpaceGraph() error = %v", err)
-	}
-	if graph.Stats.SpaceCount != 1 || graph.Stats.MessageCount != 3 {
-		t.Fatalf("graph stats = %#v, want one space and three messages", graph.Stats)
-	}
-	for _, edge := range []api.GraphEdge{
-		{Source: "space:" + space.ID, Target: "node:" + nodeA.ID, Kind: "member"},
-		{Source: "space:" + space.ID, Target: "node:" + nodeB.ID, Kind: "member"},
-		{Source: "node:" + nodeA.ID, Target: "message:" + root.ID, Kind: "sender"},
-		{Source: "node:" + nodeB.ID, Target: "message:" + child.ID, Kind: "sender"},
-		{Source: "message:" + child.ID, Target: "message:" + root.ID, Kind: "refs.messages"},
-		{Source: "message:" + directed.ID, Target: "node:" + nodeB.ID, Kind: "refs.nodes"},
-	} {
-		if !hasGraphEdge(graph, edge) {
-			t.Fatalf("graph missing edge %#v in %#v", edge, graph.Edges)
-		}
-	}
-
-	related, err := service.GetGraph(ctx, api.GraphOptions{MessageFilter: api.MessageFilter{MessageID: root.ID}})
-	if err != nil {
-		t.Fatalf("GetGraph(message_id) error = %v", err)
-	}
-	if got := recordIDs(related.Messages); !reflect.DeepEqual(got, []string{root.ID, child.ID}) {
-		t.Fatalf("related graph ids = %#v, want root,child", got)
-	}
 }
 
 func TestMemoryStoreProtocol(t *testing.T) {
-	runStoreProtocolTest(t, NewMemoryStore())
+	store := NewMemoryStore()
+	t.Cleanup(func() { store.Close() })
+	runStoreProtocolTest(t, store)
 }
 
 func TestMemoryStoreContentSchema(t *testing.T) {
-	runContentSchemaTest(t, NewMemoryStore())
+	store := NewMemoryStore()
+	t.Cleanup(func() { store.Close() })
+	runContentSchemaTest(t, store)
 }
 
 func TestMemoryStoreProjections(t *testing.T) {
-	runProjectionTest(t, NewMemoryStore())
+	store := NewMemoryStore()
+	t.Cleanup(func() { store.Close() })
+	runProjectionTest(t, store)
 }
 
 func messageIDs(messages []protocols.Message) []string {
@@ -433,11 +411,3 @@ func containsRecordID(messages []protocols.Message, want string) bool {
 	return false
 }
 
-func hasGraphEdge(graph api.GraphView, want api.GraphEdge) bool {
-	for _, edge := range graph.Edges {
-		if edge == want {
-			return true
-		}
-	}
-	return false
-}
