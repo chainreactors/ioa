@@ -13,3 +13,4 @@ coverage.*
 Thumbs.db
 .idea/
 .vscode/
+dist/
