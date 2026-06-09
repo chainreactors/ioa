@@ -173,11 +173,15 @@ func (c *Client) Read(ctx context.Context, spaceID string, opts protocols.ReadOp
 
 func (c *Client) Subscribe(ctx context.Context, spaceID string, opts ...SubscribeOption) (<-chan protocols.Message, <-chan error, func(), error) {
 	target := *c.baseURL
-	target.Path = path.Join(c.baseURL.Path, "/spaces/"+url.PathEscape(spaceID)+"/sse")
 
 	var cfg subscribeConfig
 	for _, o := range opts {
 		o(&cfg)
+	}
+	if cfg.MessageID != "" {
+		target.Path = path.Join(c.baseURL.Path, "/spaces/"+url.PathEscape(spaceID)+"/messages/"+url.PathEscape(cfg.MessageID)+"/sse")
+	} else {
+		target.Path = path.Join(c.baseURL.Path, "/spaces/"+url.PathEscape(spaceID)+"/sse")
 	}
 	if cfg.Head != "" || cfg.ForkDepth > 0 {
 		q := target.Query()

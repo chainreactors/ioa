@@ -9,95 +9,30 @@
     "host": "127.0.0.1:8765",
     "basePath": "/",
     "paths": {
-        "/graph": {
+        "/health": {
             "get": {
-                "description": "Return a normalized, read-only graph projection derived from spaces, nodes, messages, and refs.",
+                "description": "Return ok when the IOA server and store are ready",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "graph"
+                    "system"
                 ],
-                "summary": "Get graph",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Space ID filter",
-                        "name": "space_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Message ID context filter",
-                        "name": "message_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Node-connected filter: sender or refs.nodes",
-                        "name": "node_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Sender node ID filter",
-                        "name": "sender",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Referenced message ID filter",
-                        "name": "ref_message",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Referenced node ID filter",
-                        "name": "ref_node",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Pagination cursor: return messages after this ID",
-                        "name": "after",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum number of messages to return",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated sections: spaces,nodes,messages,edges",
-                        "name": "include",
-                        "in": "query"
-                    }
-                ],
+                "summary": "Health check",
                 "responses": {
                     "200": {
-                        "description": "Graph projection",
+                        "description": "Server is ready",
                         "schema": {
-                            "$ref": "#/definitions/ioa.GraphView"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
-                    "404": {
-                        "description": "Filter target not found",
+                    "503": {
+                        "description": "Server is not ready",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
-                        }
-                    },
-                    "422": {
-                        "description": "Invalid query parameters",
-                        "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -169,26 +104,26 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/ioa.MessageRecord"
+                                "$ref": "#/definitions/protocols.Message"
                             }
                         }
                     },
                     "404": {
                         "description": "Filter target not found",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "422": {
                         "description": "Invalid query parameters",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -210,14 +145,14 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/ioa.Node"
+                                "$ref": "#/definitions/protocols.Node"
                             }
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -241,7 +176,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/ioa.NodeCreate"
+                            "$ref": "#/definitions/protocols.NodeCreate"
                         }
                     }
                 ],
@@ -249,19 +184,19 @@
                     "201": {
                         "description": "Created node",
                         "schema": {
-                            "$ref": "#/definitions/ioa.Node"
+                            "$ref": "#/definitions/protocols.Node"
                         }
                     },
                     "422": {
                         "description": "Invalid request body",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -290,19 +225,148 @@
                     "200": {
                         "description": "Node details",
                         "schema": {
-                            "$ref": "#/definitions/ioa.Node"
+                            "$ref": "#/definitions/protocols.Node"
                         }
                     },
                     "404": {
                         "description": "Node not found",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/nodes/{nodeID}/inbox": {
+            "get": {
+                "description": "Return messages from all joined spaces that reference the specified node",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "Get node inbox",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "nodeID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pagination cursor: return messages after this ID",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of messages to return",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of inbox messages (includes space_id)",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/protocols.Message"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Node not found",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid query parameters",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/nodes/{nodeID}/sse": {
+            "get": {
+                "description": "Open a Server-Sent Events stream for messages addressed to the specified node across all spaces",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Subscribe to node events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "nodeID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream of protocols.Message events"
+                    },
+                    "404": {
+                        "description": "Node not found",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Streaming not supported",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ready": {
+            "get": {
+                "description": "Return ok when the IOA server and store are ready",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "Server is ready",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Server is not ready",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -324,14 +388,14 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/ioa.SpaceInfo"
+                                "$ref": "#/definitions/protocols.SpaceInfo"
                             }
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -361,7 +425,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/ioa.SpaceCreate"
+                            "$ref": "#/definitions/protocols.SpaceCreate"
                         }
                     }
                 ],
@@ -369,19 +433,19 @@
                     "200": {
                         "description": "Space info",
                         "schema": {
-                            "$ref": "#/definitions/ioa.SpaceInfo"
+                            "$ref": "#/definitions/protocols.SpaceInfo"
                         }
                     },
                     "422": {
                         "description": "Invalid request body",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -410,114 +474,19 @@
                     "200": {
                         "description": "Space details",
                         "schema": {
-                            "$ref": "#/definitions/ioa.SpaceInfo"
+                            "$ref": "#/definitions/protocols.SpaceInfo"
                         }
                     },
                     "404": {
                         "description": "Space not found",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/spaces/{spaceID}/graph": {
-            "get": {
-                "description": "Return a normalized, read-only graph projection scoped to a single space.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "graph"
-                ],
-                "summary": "Get space graph",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Space ID",
-                        "name": "spaceID",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Message ID context filter",
-                        "name": "message_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Node-connected filter: sender or refs.nodes",
-                        "name": "node_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Sender node ID filter",
-                        "name": "sender",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Referenced message ID filter",
-                        "name": "ref_message",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Referenced node ID filter",
-                        "name": "ref_node",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Pagination cursor: return messages after this ID",
-                        "name": "after",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum number of messages to return",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Comma-separated sections: spaces,nodes,messages,edges",
-                        "name": "include",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Graph projection",
-                        "schema": {
-                            "$ref": "#/definitions/ioa.GraphView"
-                        }
-                    },
-                    "404": {
-                        "description": "Space or filter target not found",
-                        "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
-                        }
-                    },
-                    "422": {
-                        "description": "Invalid query parameters",
-                        "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal server error",
-                        "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -555,6 +524,12 @@
                     },
                     {
                         "type": "string",
+                        "description": "Traversal direction: upstream (ancestors) or downstream (descendants)",
+                        "name": "direction",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Pagination cursor: return messages after this ID",
                         "name": "after",
                         "in": "query"
@@ -570,6 +545,12 @@
                         "description": "If true, return all messages ignoring node filtering",
                         "name": "all",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "If true, switch to SSE streaming mode",
+                        "name": "listen",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -578,26 +559,26 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/ioa.Message"
+                                "$ref": "#/definitions/protocols.Message"
                             }
                         }
                     },
                     "404": {
                         "description": "Space not found",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "422": {
                         "description": "Invalid query parameters",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -634,7 +615,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/ioa.SendMessage"
+                            "$ref": "#/definitions/protocols.SendMessage"
                         }
                     }
                 ],
@@ -642,25 +623,25 @@
                     "201": {
                         "description": "Created message",
                         "schema": {
-                            "$ref": "#/definitions/ioa.Message"
+                            "$ref": "#/definitions/protocols.Message"
                         }
                     },
                     "404": {
                         "description": "Space not found",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "422": {
                         "description": "Invalid request body",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -694,18 +675,18 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "SSE stream of related ioa.Message events"
+                        "description": "SSE stream of related protocols.Message events"
                     },
                     "404": {
                         "description": "Space or message not found",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Streaming not supported",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -732,18 +713,18 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "SSE stream of ioa.Message events"
+                        "description": "SSE stream of protocols.Message events"
                     },
                     "404": {
                         "description": "Space not found",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Streaming not supported",
                         "schema": {
-                            "$ref": "#/definitions/ioa.ErrorResponse"
+                            "$ref": "#/definitions/protocols.ErrorResponse"
                         }
                     }
                 }
@@ -751,7 +732,7 @@
         }
     },
     "definitions": {
-        "ioa.ErrorResponse": {
+        "protocols.ErrorResponse": {
             "type": "object",
             "properties": {
                 "detail": {
@@ -759,99 +740,32 @@
                 }
             }
         },
-        "ioa.GraphEdge": {
-            "type": "object",
-            "properties": {
-                "kind": {
-                    "type": "string"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "target": {
-                    "type": "string"
-                }
-            }
-        },
-        "ioa.GraphStats": {
-            "type": "object",
-            "properties": {
-                "edge_count": {
-                    "type": "integer"
-                },
-                "message_count": {
-                    "type": "integer"
-                },
-                "node_count": {
-                    "type": "integer"
-                },
-                "space_count": {
-                    "type": "integer"
-                }
-            }
-        },
-        "ioa.GraphView": {
-            "type": "object",
-            "properties": {
-                "edges": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/ioa.GraphEdge"
-                    }
-                },
-                "messages": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/ioa.MessageRecord"
-                    }
-                },
-                "nodes": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/ioa.Node"
-                    }
-                },
-                "spaces": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/ioa.SpaceInfo"
-                    }
-                },
-                "stats": {
-                    "$ref": "#/definitions/ioa.GraphStats"
-                }
-            }
-        },
-        "ioa.Message": {
+        "protocols.Message": {
             "type": "object",
             "properties": {
                 "content": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
                 },
-                "id": {
-                    "type": "string"
-                },
-                "refs": {
-                    "$ref": "#/definitions/ioa.Ref"
-                },
-                "sender": {
-                    "type": "string"
-                }
-            }
-        },
-        "ioa.MessageRecord": {
-            "type": "object",
-            "properties": {
-                "content": {
+                "content_schema": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
+                },
+                "content_type": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
+                "meta": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
                 "refs": {
-                    "$ref": "#/definitions/ioa.Ref"
+                    "$ref": "#/definitions/protocols.Ref"
                 },
                 "sender": {
                     "type": "string"
@@ -861,40 +775,40 @@
                 }
             }
         },
-        "ioa.Node": {
+        "protocols.Node": {
             "type": "object",
             "properties": {
+                "description": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
                 "meta": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
                 },
                 "name": {
                     "type": "string"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
                 }
             }
         },
-        "ioa.NodeCreate": {
+        "protocols.NodeCreate": {
             "type": "object",
             "properties": {
+                "description": {
+                    "type": "string"
+                },
                 "meta": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
                 },
                 "name": {
                     "type": "string"
                 }
             }
         },
-        "ioa.Ref": {
+        "protocols.Ref": {
             "type": "object",
             "properties": {
                 "messages": {
@@ -911,23 +825,30 @@
                 }
             }
         },
-        "ioa.SendMessage": {
+        "protocols.SendMessage": {
             "type": "object",
             "properties": {
                 "content": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
                 },
                 "content_schema": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
+                },
+                "content_type": {
+                    "type": "string"
+                },
+                "meta": {
+                    "type": "object",
+                    "additionalProperties": {}
                 },
                 "refs": {
-                    "$ref": "#/definitions/ioa.Ref"
+                    "$ref": "#/definitions/protocols.Ref"
                 }
             }
         },
-        "ioa.SpaceCreate": {
+        "protocols.SpaceCreate": {
             "type": "object",
             "properties": {
                 "description": {
@@ -935,16 +856,18 @@
                 },
                 "name": {
                     "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
-        "ioa.SpaceInfo": {
+        "protocols.SpaceInfo": {
             "type": "object",
             "properties": {
-                "content_schema": {
-                    "type": "object",
-                    "additionalProperties": true
-                },
                 "id": {
                     "type": "string"
                 },
@@ -957,7 +880,7 @@
                 "nodes": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/ioa.SpaceNode"
+                        "$ref": "#/definitions/protocols.Node"
                     }
                 },
                 "tags": {
@@ -965,20 +888,6 @@
                     "items": {
                         "type": "string"
                     }
-                }
-            }
-        },
-        "ioa.SpaceNode": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
                 }
             }
         }

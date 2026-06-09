@@ -90,6 +90,7 @@ type readCmd struct {
 	After     string `long:"after" description:"Cursor: read messages after this ID"`
 	Limit     int    `long:"limit" short:"l" description:"Maximum number of messages"`
 	All       bool   `long:"all" short:"a" description:"Read all messages (not just addressed to this node)"`
+	Listen    bool   `long:"listen" description:"Stream new messages via SSE (use with --message for thread-scoped)"`
 }
 
 // Server command structs
@@ -389,6 +390,9 @@ func runReadDispatch(ctx context.Context, c *client.Client, nodeName string, cmd
 	if err := ensureNode(ctx, c, nodeName); err != nil {
 		return err
 	}
+	if cmd.Listen {
+		return runReadListen(ctx, c, cmd)
+	}
 	msgs, err := c.Read(ctx, cmd.SpaceID, protocols.ReadOptions{
 		MessageID: cmd.MessageID,
 		Direction: cmd.Direction,
@@ -400,6 +404,35 @@ func runReadDispatch(ctx context.Context, c *client.Client, nodeName string, cmd
 		return err
 	}
 	return writeJSON(msgs)
+}
+
+func runReadListen(ctx context.Context, c *client.Client, cmd readCmd) error {
+	var opts []client.SubscribeOption
+	if cmd.MessageID != "" {
+		opts = append(opts, client.WithMessage(cmd.MessageID))
+	}
+	messages, errs, cancel, err := c.Subscribe(ctx, cmd.SpaceID, opts...)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+
+	enc := json.NewEncoder(os.Stdout)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err, ok := <-errs:
+			if ok && err != nil {
+				return err
+			}
+		case msg, ok := <-messages:
+			if !ok {
+				return nil
+			}
+			_ = enc.Encode(msg)
+		}
+	}
 }
 
 func execProtocolSend(ctx context.Context, c *client.Client, nodeName, spaceID string, sub *goflags.Command) error {

@@ -14,6 +14,7 @@ type StreamAPI interface {
 type subscribeConfig struct {
 	Head      string
 	ForkDepth int
+	MessageID string
 }
 
 type SubscribeOption func(*subscribeConfig)
@@ -24,4 +25,8 @@ func WithHead(messageID string) SubscribeOption {
 
 func WithForkDepth(depth int) SubscribeOption {
 	return func(c *subscribeConfig) { c.ForkDepth = depth }
+}
+
+func WithMessage(messageID string) SubscribeOption {
+	return func(c *subscribeConfig) { c.MessageID = messageID }
 }

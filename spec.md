@@ -13,16 +13,16 @@
 
 | 层 | 概念 | 一句话 |
 |----|------|--------|
+| L0 | **Space** | 基础设施：隔离边界与 Message Graph 容器（server 管理，参与者透明） |
 | L1 | **Node** | 参与者 |
 | L1 | **Message** | 不可变通信单元 |
-| L1 | **Space** | Message Graph 的隔离容器 |
-| L2 | **Ref** | Message 对 Message / Node 的引用 |
+| L1 | **Ref** | Message 对 Message / Node 的引用 |
 
 三个操作覆盖全部交互：
 
 | 操作 | 语义 |
 |------|------|
-| `ioa_space` | 创建或加入 Space |
+| `ioa_space` | 声明进入协作域 |
 | `ioa_send` | 写入 Message |
 | `ioa_read` | 读取 Message |
 
@@ -30,7 +30,29 @@
 
 ## 2. 类型
 
-### 2.1 Node
+### 2.1 Space（L0）
+
+```json
+{
+  "id":   "string",
+  "name": "string"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 全局唯一，服务端生成 |
+| `name` | `string` | 是 | 唯一名称 |
+
+Space 是 L0 基础设施层，由 server 管理。参与者通过 `ioa_space` 进入 Space 并声明职责描述，但 Space 的隔离、认证和生命周期管理对参与者透明。协议的核心交互发生在 L1（Node + Message + Ref），Space 提供这些交互的边界。
+
+**按 name 幂等**：同名 Space 多次创建返回同一实例。
+
+**隔离边界**：Space 之间的 Message 不互通。`refs.messages` 不能跨 Space。每个 Space 内的 Message Graph 是自包含的。
+
+**Node 与 Space 的关系**：Node 通过 `ioa_space` 加入 Space 时声明一个 `description`（职责描述）。`description` 是 per-Space 的——同一 Node 在不同 Space 中可以有不同描述，重复调用可更新。加入是声明性的，不产生 Message，不改变 Message Graph。
+
+### 2.2 Node（L1）
 
 ```json
 {
@@ -50,12 +72,13 @@ Node 不区分 Agent 与 Human——协议只关心地址和消息格式。`meta
 
 Node 可同时存在于任意多个 Space。
 
-### 2.2 Message
+### 2.3 Message（L1）
 
 ```json
 {
   "id":      "string",
   "sender":  "string",
+  "created_at": "string",
   "content": {},
   "refs": {
     "messages": [],
@@ -68,14 +91,15 @@ Node 可同时存在于任意多个 Space。
 |------|------|------|
 | `id` | `string` | 全局唯一，服务端生成 |
 | `sender` | `string` | 发送者 Node ID |
+| `created_at` | `string` | 服务端写入时间，RFC3339 UTC |
 | `content` | `object` | 任意结构化载荷，**不可为 null** |
 | `refs` | `Ref` | 引用 |
 
-**公开字段仅此四个**。实现内部可维护 `space_id`、append position 等字段，但不暴露给参与者。
+**公开字段仅此五个**。实现内部可维护 `space_id`、append position 等字段，但不暴露给参与者。
 
 **不可变**：Message 一旦写入，不可修改、不可删除。Space 是 append-only 日志。
 
-### 2.3 Ref
+### 2.4 Ref（L1）
 
 ```json
 {
@@ -95,26 +119,6 @@ Node 可同时存在于任意多个 Space。
 - **Ref → Node**：标记收件人，读取时可按 Node 过滤
 
 均为数组，支持多 parent（DAG 合并）和多收件人。空数组 `[]` 表示无引用。
-
-### 2.4 Space
-
-```json
-{
-  "id":   "string",
-  "name": "string"
-}
-```
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `id` | `string` | 是 | 全局唯一，服务端生成 |
-| `name` | `string` | 是 | 唯一名称 |
-
-**按 name 幂等**：同名 Space 多次创建返回同一实例。
-
-**隔离边界**：Space 之间的 Message 不互通。`refs.messages` 不能跨 Space。每个 Space 内的 Message Graph 是自包含的。
-
-**Node 与 Space 的关系**：Node 通过 `ioa_space` 加入 Space 时声明一个 `description`（职责描述）。`description` 是 per-Space 的——同一 Node 在不同 Space 中可以有不同描述，重复调用可更新。加入是声明性的，不产生 Message，不改变 Message Graph。
 
 ---
 
@@ -146,6 +150,8 @@ Root             Thread           Tree              DAG
 ### 3.2 关联子图（Related Messages）
 
 给定一条 Message，其**关联子图**定义为：沿 `refs.messages` 向上遍历全部祖先 + 向下遍历全部后代。结果按 append 顺序排列。
+
+通过 `direction` 参数可限制遍历方向：`upstream` 仅返回祖先，`downstream` 仅返回后代。缺省为双向。
 
 这是 `ioa_read` 中 `message_id` 参数的语义基础。
 
@@ -206,12 +212,11 @@ Node 加入 Space 是声明性的——不产生 Message，不改变 Message Gra
 
 1. 自动确保 Node 已注册
 2. `content` 不可为 null
-3. 若 `content_schema` 存在：验证其为合法 JSON Schema，存储为 Space 的 content schema。**该 Message 的 content 不被校验**
-4. 若 `content_schema` 不存在且 Space 已有 schema：校验 `content` 是否符合 schema，不符合则返回 `invalid_input` 错误
-5. `refs` 缺省为 `{"messages": [], "nodes": []}`
-6. 校验 refs 合法性（见 §3.3）
-7. 生成 Message ID，append 到 Space
-8. 返回完整 `Message`
+3. 若 `content_schema` 存在：验证其为合法 JSON Schema，作为声明式元数据存储在该 Message 上。**不校验任何 Message 的 content**
+4. `refs` 缺省为 `{"messages": [], "nodes": []}`
+5. 校验 refs 合法性（见 §3.3）
+6. 生成 Message ID，append 到 Space
+7. 返回完整 `Message`
 
 写入成功后，实现**应当**通知该 Space 的实时订阅者。
 
@@ -223,9 +228,11 @@ Node 加入 Space 是声明性的——不产生 Message，不改变 Message Gra
 |------|------|------|
 | `space_id` | `string` | 是 |
 | `message_id` | `string` | 否 |
+| `direction` | `string` | 否 |
 | `after` | `string` | 否 |
 | `limit` | `int` | 否 |
 | `all` | `bool` | 否 |
+| `listen` | `bool` | 否 |
 
 **读取模式**（按优先级从高到低）：
 
@@ -236,26 +243,34 @@ Node 加入 Space 是声明性的——不产生 Message，不改变 Message Gra
 | 调用者身份已知 | `refs.nodes` 包含调用者的 Message |
 | 均不满足 | Root Message |
 
+**方向过滤**（仅与 `message_id` 配合使用）：
+
+| `direction` | 返回 |
+|-------------|------|
+| _(空)_ | 祖先 + 后代（完整关联子图） |
+| `upstream` | 仅祖先（沿 refs.messages 向上） |
+| `downstream` | 仅后代（沿 children 向下） |
+
+**实时监听**：
+
+`listen = true` 时，连接转为 SSE 长连接，新 Message 逐条推送。与 `message_id` 配合可限定为特定 thread。适合通过后台进程挂起，由调用者主动查看。
+
 **分页**：
 
 - `after`：游标，只返回 append 位置在该 Message 之后的结果
 - `limit`：最大条数。无 `after` 时截取末尾（最新 N 条）；有 `after` 时截取头部（最早 N 条）
 
-**返回**：`Message[]`
+**返回**：`Message[]`（listen 模式下为 JSONL 流）
 
-### 4.4 Content Schema（可选）
+### 4.4 Content Schema（声明式）
 
-Space 可以关联一个 JSON Schema，约束后续 Message 的 `content` 格式。
+Message 可以携带 `content_schema`，作为声明式元数据描述该 Message 的 content 结构。
 
-**设置**：通过 `ioa_send` 的 `content_schema` 参数提交一个 JSON Schema 对象。schema 在写入前验证其自身合法性——非法 schema 被拒绝。设置 schema 的 Message 本身不受该 schema 约束。
+**设置**：通过 `ioa_send` 的 `content_schema` 参数提交一个 JSON Schema 对象。schema 在写入前验证其自身合法性——非法 schema 被拒绝。
 
-**校验**：后续不携带 `content_schema` 的 Message，其 `content` 按当前 Space schema 校验。校验失败返回 `invalid_input` 错误，包含具体字段路径和原因，供调用者（AI Agent）自行纠正后重试。
+**语义**：`content_schema` 是**声明式元数据**，存储在 Message 上供消费者参考。服务端**不**使用它校验任何 Message 的 content（包括后续回复）。校验逻辑由客户端自行决定。
 
-**更新**：再次通过 `content_schema` 提交新 schema 即覆盖旧 schema。
-
-**发现**：`ioa_space` 的返回中包含当前 `content_schema`（如有），让新加入的 Agent 知道预期格式。
-
-**可选性**：未设置 schema 的 Space 不做任何 content 校验，行为与无 schema 时完全一致。
+**发现**：读取 Message 时 `content_schema` 字段随 Message 返回，让消费者知道预期格式。
 
 ---
 
@@ -291,16 +306,16 @@ Node 向服务端提供 `name` 和可选 `meta`，服务端生成全局唯一 ID
 
 ### 实现必须（MUST）
 
+- Space 是 L0 基础设施，对参与者透明——参与者不直接管理 Space 的创建和生命周期
 - Message 不可变，Space 是 append-only
 - `refs.messages` 同 Space 约束，写入时校验
 - `refs.nodes` 全局存在性校验
 - Space 按 name 幂等
-- 公开 Message 只暴露 `id` / `sender` / `content` / `refs`
-- 关联子图包含完整祖先和后代
+- 公开 Message 只暴露 `id` / `sender` / `created_at` / `content` / `refs`
+- 关联子图包含完整祖先和后代（可通过 `direction` 限制方向）
 - 读取模式按 §4.3 优先级分派
-- 若 Space 有 content schema，写入时校验 content（见 §4.4）
 - `content_schema` 本身必须是合法 JSON Schema，否则拒绝
-- 设置 schema 的 Message 不受该 schema 约束
+- `content_schema` 是声明式元数据，服务端不执行 content 校验
 
 ### 实现可以（MAY）
 
@@ -308,7 +323,7 @@ Node 向服务端提供 `name` 和可选 `meta`，服务端生成全局唯一 ID
 - 自由选择实时推送机制（SSE、WebSocket、轮询、消息队列……）
 - 自由选择 ID 生成算法，只要保证全局唯一
 - 添加传输层认证（TLS、token、mTLS……）
-- 对 Space / Message 添加内部元数据（创建时间、append position……），只要不暴露在公开 Message 中
+- 对 Space / Message 添加内部元数据（append position、存储版本……），只要不暴露在公开 Message 中
 
 ---
 
