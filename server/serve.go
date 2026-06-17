@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/chainreactors/ioa/protocols"
 )
 
 type ServerOptions struct {
@@ -42,16 +44,18 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 		return fmt.Errorf("unsupported scheme %q (use http or https)", scheme)
 	}
 
-	service := NewService(store, opts.AccessKey)
+	accessKey := opts.AccessKey
+	if accessKey == "" {
+		accessKey = protocols.NewToken()
+	}
+
+	service := NewService(store, accessKey)
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", newMCPHandler(service))
 	mux.Handle("/", NewHandler(service))
 
-	var handler http.Handler = mux
-	if opts.AccessKey != "" {
-		handler = AuthMiddleware(service)(mux)
-	}
+	handler := AuthMiddleware(service)(mux)
 
 	srv := &http.Server{Addr: host, Handler: handler}
 	go func() {
@@ -61,7 +65,8 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 		_ = srv.Shutdown(shutCtx)
 	}()
 
-	log.Printf("[*] ioa_server status=starting url=%s://%s", scheme, host)
+	clientURL := url.URL{Scheme: scheme, User: url.User(accessKey), Host: host}
+	log.Printf("[*] ioa_server status=starting url=%s", clientURL.String())
 
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err

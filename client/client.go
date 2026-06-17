@@ -32,10 +32,16 @@ func NewClient(baseURL string, nodeID string) (*Client, error) {
 	if parsed.Scheme == "" || parsed.Host == "" {
 		return nil, fmt.Errorf("invalid ioa url: %s", baseURL)
 	}
+	var accessKey string
+	if parsed.User != nil {
+		accessKey = parsed.User.Username()
+		parsed.User = nil
+	}
 	return &Client{
 		baseURL:    parsed,
 		httpClient: http.DefaultClient,
 		nodeID:     nodeID,
+		accessKey:  accessKey,
 	}, nil
 }
 
@@ -50,6 +56,22 @@ func NewClientWithToken(baseURL string, token string) (*Client, error) {
 
 func (c *Client) NodeID() string {
 	return c.nodeID
+}
+
+func (c *Client) AccessKey() string {
+	return c.accessKey
+}
+
+func (c *Client) EnsureRegistered(ctx context.Context, name, description string, meta map[string]interface{}) error {
+	if c.nodeID != "" {
+		return nil
+	}
+	if c.accessKey != "" {
+		_, err := c.Register(ctx, c.accessKey, name, description, meta)
+		return err
+	}
+	_, err := c.RegisterNode(ctx, name, description, meta)
+	return err
 }
 
 func (c *Client) Register(ctx context.Context, accessKey, name, description string, meta map[string]interface{}) (protocols.AuthResponse, error) {
