@@ -85,8 +85,8 @@ func runStoreProtocolTest(t *testing.T, store Store) {
 	if err != nil {
 		t.Fatalf("ReadMessages(node) error = %v", err)
 	}
-	if got := messageIDs(forNode); !reflect.DeepEqual(got, []string{directed.ID}) {
-		t.Fatalf("node ids = %#v, want directed", got)
+	if got := messageIDs(forNode); !reflect.DeepEqual(got, []string{root.ID, directed.ID}) {
+		t.Fatalf("node ids = %#v, want root(broadcast)+directed", got)
 	}
 
 	related, err := service.ReadMessages(ctx, space.ID, "", protocols.ReadOptions{MessageID: root.ID})

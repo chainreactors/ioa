@@ -298,11 +298,18 @@ func (s *SQLiteStore) GetMessagesForNode(spaceID, nodeID, after string, limit in
 	}
 	var filtered []protocols.Message
 	for _, m := range all {
-		if ContainsString(m.Refs.Nodes, nodeID) {
+		if m.Sender == nodeID {
+			continue
+		}
+		if ContainsString(m.Refs.Nodes, nodeID) || isBroadcast(m) {
 			filtered = append(filtered, m)
 		}
 	}
 	return WindowMessages(filtered, all, after, limit), nil
+}
+
+func isBroadcast(m protocols.Message) bool {
+	return len(m.Refs.Nodes) == 0 && len(m.Refs.Messages) == 0
 }
 
 func (s *SQLiteStore) GetStartMessages(spaceID, after string, limit int) ([]protocols.Message, error) {
@@ -357,7 +364,10 @@ func (s *SQLiteStore) GetInboxMessages(nodeID, after string, limit int) ([]proto
 	}
 	var filtered []protocols.Message
 	for _, m := range allMessages {
-		if ContainsString(m.Refs.Nodes, nodeID) {
+		if m.Sender == nodeID {
+			continue
+		}
+		if ContainsString(m.Refs.Nodes, nodeID) || isBroadcast(m) {
 			filtered = append(filtered, m)
 		}
 	}
