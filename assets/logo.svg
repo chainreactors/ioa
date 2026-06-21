@@ -1,104 +1,197 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <linearGradient id="gr" x1="0%" y1="100%" x2="100%" y2="0%">
+    <linearGradient id="gr" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#800000"/>
       <stop offset="100%" stop-color="#ff4d4d"/>
     </linearGradient>
-    <linearGradient id="gr2" x1="100%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#800000"/>
-      <stop offset="100%" stop-color="#ff4d4d"/>
-    </linearGradient>
-    <radialGradient id="pulse" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0%" stop-color="#ff4d4d" stop-opacity="0.3"/>
-      <stop offset="40%" stop-color="#d90429" stop-opacity="0.1"/>
-      <stop offset="100%" stop-color="#800000" stop-opacity="0"/>
+    <filter id="nodeGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b2"/>
+      <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="msgGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b2"/>
+      <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Edge fade masks for infinite extension effect -->
+    <radialGradient id="fadeMask" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="55%" stop-color="white" stop-opacity="1"/>
+      <stop offset="85%" stop-color="white" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
     </radialGradient>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="b2"/>
-      <feMerge>
-        <feMergeNode in="b2"/>
-        <feMergeNode in="b1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <filter id="heavyGlow" x="-80%" y="-80%" width="260%" height="260%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="b1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="20" result="b2"/>
-      <feMerge>
-        <feMergeNode in="b2"/>
-        <feMergeNode in="b1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
+    <mask id="edgeFade">
+      <rect width="512" height="512" fill="url(#fadeMask)"/>
+    </mask>
   </defs>
 
-  <!-- Central energy pulse -->
-  <circle cx="256" cy="256" r="200" fill="url(#pulse)"/>
+  <!-- Everything inside this group fades at the edges -->
+  <g mask="url(#edgeFade)">
 
-  <!-- Orbital rings — three elliptical orbits crossing at center -->
-  <g stroke="url(#gr)" fill="none" opacity="0.2" stroke-width="1.5">
-    <ellipse cx="256" cy="256" rx="170" ry="65" transform="rotate(-30 256 256)"/>
-    <ellipse cx="256" cy="256" rx="170" ry="65" transform="rotate(30 256 256)"/>
-    <ellipse cx="256" cy="256" rx="170" ry="65" transform="rotate(90 256 256)"/>
-  </g>
+    <!-- ============================================ -->
+    <!-- EDGES: causal chain (solid)                  -->
+    <!-- ============================================ -->
+    <g stroke="url(#gr)" stroke-width="2.2" opacity="0.4" stroke-linecap="round">
 
-  <!-- Message streams — thick glowing arcs forming a triangle -->
-  <g filter="url(#glow)">
-    <!-- A → B -->
-    <path d="M256,108 Q380,180 376,348"
-          fill="none" stroke="url(#gr)" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
-    <!-- B → C -->
-    <path d="M370,355 Q256,440 142,335"
-          fill="none" stroke="url(#gr)" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
-    <!-- C → A -->
-    <path d="M136,325 Q130,180 256,112"
-          fill="none" stroke="url(#gr2)" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
-  </g>
+      <!-- Incoming from top-left (outside canvas) -->
+      <line x1="-20" y1="-10" x2="75" y2="70"/>
+      <line x1="75" y1="70" x2="135" y2="140"/>
+      <line x1="30" y1="50" x2="135" y2="140"/>
 
-  <!-- Inner triangle frame — sharp geometric accent -->
-  <polygon points="256,105 380,352 132,332"
-           fill="none" stroke="#ff4d4d" stroke-width="1" opacity="0.15"/>
+      <!-- Incoming from top-right -->
+      <line x1="480" y1="-15" x2="400" y2="75"/>
+      <line x1="530" y1="30" x2="400" y2="75"/>
+      <line x1="400" y1="75" x2="345" y2="155"/>
 
-  <!-- Node A (top) — large hexagon -->
-  <g filter="url(#heavyGlow)" transform="translate(256,105)">
-    <polygon points="0,-28 24,-14 24,14 0,28 -24,14 -24,-14"
-             fill="#d90429" fill-opacity="0.4" stroke="url(#gr)" stroke-width="3" stroke-linejoin="round"/>
-    <circle r="6" fill="#ffffff"/>
-  </g>
+      <!-- N1 region -->
+      <line x1="135" y1="140" x2="200" y2="195"/>
+      <line x1="345" y1="155" x2="280" y2="195"/>
+      <line x1="200" y1="195" x2="240" y2="195"/>
 
-  <!-- Node B (bottom-right) — large hexagon -->
-  <g filter="url(#heavyGlow)" transform="translate(380,352)">
-    <polygon points="0,-28 24,-14 24,14 0,28 -24,14 -24,-14"
-             fill="#d90429" fill-opacity="0.4" stroke="url(#gr)" stroke-width="3" stroke-linejoin="round"/>
-    <circle r="6" fill="#ffffff"/>
-  </g>
+      <!-- N1 → M1, M2 -->
+      <line x1="240" y1="210" x2="155" y2="275"/>
+      <line x1="260" y1="210" x2="350" y2="275"/>
 
-  <!-- Node C (bottom-left) — large hexagon -->
-  <g filter="url(#heavyGlow)" transform="translate(132,332)">
-    <polygon points="0,-28 24,-14 24,14 0,28 -24,14 -24,-14"
-             fill="#d90429" fill-opacity="0.4" stroke="url(#gr)" stroke-width="3" stroke-linejoin="round"/>
-    <circle r="6" fill="#ffffff"/>
-  </g>
+      <!-- M1 → M3 -->
+      <line x1="150" y1="290" x2="170" y2="345"/>
+      <!-- M2 → M4, M2 → M5 -->
+      <line x1="345" y1="290" x2="290" y2="345"/>
+      <line x1="360" y1="290" x2="420" y2="345"/>
 
-  <!-- Center nexus — the Space convergence point -->
-  <g filter="url(#heavyGlow)">
-    <circle cx="256" cy="262" r="18" fill="#d90429" fill-opacity="0.15" stroke="url(#gr)" stroke-width="2"/>
-    <circle cx="256" cy="262" r="8" fill="#ffffff" opacity="0.9"/>
-    <circle cx="256" cy="262" r="3" fill="#ff4d4d"/>
-  </g>
+      <!-- M3+M4 → M6 merge -->
+      <line x1="175" y1="360" x2="230" y2="410"/>
+      <line x1="285" y1="360" x2="245" y2="410"/>
+      <!-- M4 → M7 -->
+      <line x1="300" y1="360" x2="370" y2="410"/>
 
-  <!-- Energy particles along arcs -->
-  <g filter="url(#glow)">
-    <circle cx="320" cy="170" r="4" fill="#ff4d4d" opacity="0.8"/>
-    <circle cx="390" cy="280" r="3" fill="#ff4d4d" opacity="0.6"/>
-    <circle cx="300" cy="400" r="4" fill="#ff4d4d" opacity="0.8"/>
-    <circle cx="190" cy="395" r="3" fill="#ff4d4d" opacity="0.6"/>
-    <circle cx="130" cy="250" r="4" fill="#ff4d4d" opacity="0.8"/>
-    <circle cx="195" cy="145" r="3" fill="#ff4d4d" opacity="0.6"/>
-  </g>
+      <!-- M6 → N2, M7 → N2 -->
+      <line x1="238" y1="425" x2="260" y2="470"/>
+      <line x1="365" y1="425" x2="275" y2="470"/>
 
-  <!-- Outer ring accent -->
-  <circle cx="256" cy="256" r="210" fill="none" stroke="url(#gr)" stroke-width="1" opacity="0.1"/>
-  <circle cx="256" cy="256" r="230" fill="none" stroke="#ff4d4d" stroke-width="0.5" opacity="0.06"/>
+      <!-- Outgoing from N2 to bottom -->
+      <line x1="255" y1="490" x2="200" y2="540"/>
+      <line x1="270" y1="490" x2="330" y2="540"/>
+      <line x1="200" y1="540" x2="150" y2="580"/>
+
+      <!-- Outgoing branch from M5 to right edge -->
+      <line x1="430" y1="355" x2="490" y2="400"/>
+      <line x1="490" y1="400" x2="540" y2="430"/>
+      <line x1="490" y1="400" x2="530" y2="480"/>
+
+      <!-- Outgoing branch from M7 to bottom-right -->
+      <line x1="378" y1="420" x2="430" y2="480"/>
+      <line x1="430" y1="480" x2="480" y2="540"/>
+
+      <!-- Side branch from M3 to left edge -->
+      <line x1="160" y1="355" x2="90" y2="400"/>
+      <line x1="90" y1="400" x2="20" y2="430"/>
+      <line x1="90" y1="400" x2="50" y2="480"/>
+    </g>
+
+    <!-- Cross-refs (dashed) -->
+    <g fill="none" stroke="#ff4d4d" stroke-width="1.3" opacity="0.18" stroke-linecap="round" stroke-dasharray="4 5">
+      <path d="M415,352 C390,385 275,405 242,410"/>
+      <path d="M415,350 C405,385 388,405 375,415"/>
+      <path d="M80,72 C120,110 190,170 200,190"/>
+    </g>
+
+    <!-- ============================================ -->
+    <!-- EDGE MESSAGES: half-visible at borders       -->
+    <!-- ============================================ -->
+
+    <!-- Top-left incoming messages -->
+    <g filter="url(#msgGlow)" transform="translate(75,70)">
+      <circle r="9" fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="1.5"/>
+      <circle r="3.5" fill="#ff4d4d" opacity="0.8"/>
+    </g>
+    <g filter="url(#msgGlow)" transform="translate(135,140)">
+      <circle r="9" fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="1.5"/>
+      <circle r="3.5" fill="#ff4d4d" opacity="0.8"/>
+    </g>
+
+    <!-- Top-right incoming messages -->
+    <g filter="url(#msgGlow)" transform="translate(400,75)">
+      <circle r="9" fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="1.5"/>
+      <circle r="3.5" fill="#ff4d4d" opacity="0.8"/>
+    </g>
+    <g filter="url(#msgGlow)" transform="translate(345,155)">
+      <circle r="9" fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="1.5"/>
+      <circle r="3.5" fill="#ff4d4d" opacity="0.8"/>
+    </g>
+
+    <!-- ============================================ -->
+    <!-- CORE DAG: Messages (small)                   -->
+    <!-- ============================================ -->
+
+    <!-- M1 -->
+    <g filter="url(#msgGlow)" transform="translate(150,280)">
+      <circle r="11" fill="#d90429" fill-opacity="0.35" stroke="url(#gr)" stroke-width="1.8"/>
+      <circle r="4" fill="#ff4d4d" opacity="0.9"/>
+    </g>
+    <!-- M2 -->
+    <g filter="url(#msgGlow)" transform="translate(352,280)">
+      <circle r="11" fill="#d90429" fill-opacity="0.35" stroke="url(#gr)" stroke-width="1.8"/>
+      <circle r="4" fill="#ff4d4d" opacity="0.9"/>
+    </g>
+    <!-- M3 -->
+    <g filter="url(#msgGlow)" transform="translate(170,352)">
+      <circle r="11" fill="#d90429" fill-opacity="0.35" stroke="url(#gr)" stroke-width="1.8"/>
+      <circle r="4" fill="#ff4d4d" opacity="0.9"/>
+    </g>
+    <!-- M4 -->
+    <g filter="url(#msgGlow)" transform="translate(292,352)">
+      <circle r="11" fill="#d90429" fill-opacity="0.35" stroke="url(#gr)" stroke-width="1.8"/>
+      <circle r="4" fill="#ff4d4d" opacity="0.9"/>
+    </g>
+    <!-- M5 (thread branch) -->
+    <g filter="url(#msgGlow)" transform="translate(422,348)">
+      <circle r="11" fill="#d90429" fill-opacity="0.35" stroke="url(#gr)" stroke-width="1.8"/>
+      <circle r="4" fill="#ff4d4d" opacity="0.9"/>
+    </g>
+    <!-- M6 (merge) -->
+    <g filter="url(#msgGlow)" transform="translate(237,418)">
+      <circle r="11" fill="#d90429" fill-opacity="0.35" stroke="url(#gr)" stroke-width="1.8"/>
+      <circle r="4" fill="#ff4d4d" opacity="0.9"/>
+    </g>
+    <!-- M7 -->
+    <g filter="url(#msgGlow)" transform="translate(372,418)">
+      <circle r="11" fill="#d90429" fill-opacity="0.35" stroke="url(#gr)" stroke-width="1.8"/>
+      <circle r="4" fill="#ff4d4d" opacity="0.9"/>
+    </g>
+
+    <!-- Bottom outgoing messages -->
+    <g filter="url(#msgGlow)" transform="translate(90,400)">
+      <circle r="9" fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="1.5"/>
+      <circle r="3.5" fill="#ff4d4d" opacity="0.8"/>
+    </g>
+    <g filter="url(#msgGlow)" transform="translate(490,400)">
+      <circle r="9" fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="1.5"/>
+      <circle r="3.5" fill="#ff4d4d" opacity="0.8"/>
+    </g>
+    <g filter="url(#msgGlow)" transform="translate(430,480)">
+      <circle r="9" fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="1.5"/>
+      <circle r="3.5" fill="#ff4d4d" opacity="0.8"/>
+    </g>
+
+    <!-- ============================================ -->
+    <!-- CORE DAG: Nodes (large, agents)              -->
+    <!-- ============================================ -->
+
+    <!-- N1 (center-top) -->
+    <g filter="url(#nodeGlow)" transform="translate(250,198)">
+      <circle r="28" fill="#d90429" fill-opacity="0.2" stroke="url(#gr)" stroke-width="3.5"/>
+      <circle r="17" fill="none" stroke="#ff4d4d" stroke-width="1" opacity="0.25"/>
+      <circle r="9" fill="#ffffff"/>
+      <circle r="3.5" fill="#ff4d4d"/>
+    </g>
+
+    <!-- N2 (center-bottom) -->
+    <g filter="url(#nodeGlow)" transform="translate(262,478)">
+      <circle r="28" fill="#d90429" fill-opacity="0.2" stroke="url(#gr)" stroke-width="3.5"/>
+      <circle r="17" fill="none" stroke="#ff4d4d" stroke-width="1" opacity="0.25"/>
+      <circle r="9" fill="#ffffff"/>
+      <circle r="3.5" fill="#ff4d4d"/>
+    </g>
+
+  </g><!-- end edgeFade mask -->
 </svg>
