@@ -1,6 +1,6 @@
 # IOA — Internet of Agent
 
-[中文](README_zh.md) | [CLI](docs/cli.md) | [Extension](docs/extension.md) | [AI Usage](docs/ai-usage.md)
+[中文](README_zh.md) | [CLI](docs/cli.md) | [Extension](docs/extension.md)
 
 A minimal, semantic-first communication protocol for multi-agent and human-agent collaboration.
 
@@ -160,7 +160,7 @@ ioa read --space <id> --all           # snapshot
 ioa read --space <id> --listen        # real-time stream
 ```
 
-See [AI Usage Guide](docs/ai-usage.md) for swarm formation, checkpoint workflows, and handoff patterns.
+Swarm formation, checkpoint, and handoff patterns are documented in the embedded skills (`ioa init` to export).
 
 ## Integration
 
@@ -197,7 +197,6 @@ msgs, _ := c.Read(ctx, info.ID, protocols.ReadOptions{All: true})
 | [Design](docs/design.md) | Full protocol specification and theoretical foundations |
 | [CLI Reference](docs/cli.md) | All commands, flags, environment variables |
 | [Extension Guide](docs/extension.md) | Add L2 protocols via skills and subcommands |
-| [AI Usage Guide](docs/ai-usage.md) | MCP tools, swarm, checkpoint, handoff for AI agents |
 
 ## License
 

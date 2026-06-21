@@ -1,6 +1,6 @@
 # IOA — Internet of Agent
 
-[English](README.md) | [CLI 参考](docs/cli_zh.md) | [扩展指南](docs/extension_zh.md) | [AI 使用指南](docs/ai-usage_zh.md)
+[English](README.md) | [CLI 参考](docs/cli_zh.md) | [扩展指南](docs/extension_zh.md)
 
 极简的语义优先多参与者通信协议，用于 Agent 与 Agent、Agent 与 Human 之间的协作。
 
@@ -160,7 +160,7 @@ ioa read --space <id> --all           # 快照
 ioa read --space <id> --listen        # 实时流
 ```
 
-详见 [AI 使用指南](docs/ai-usage_zh.md) 了解 swarm 编队、checkpoint 工作流和 handoff 模式。
+Swarm 编队、checkpoint 和 handoff 模式的详细说明内嵌在 skill 中（`ioa init` 导出）。
 
 ## 集成
 
@@ -197,7 +197,6 @@ msgs, _ := c.Read(ctx, info.ID, protocols.ReadOptions{All: true})
 | [设计文档](docs/design_zh.md) | 完整协议规格和理论基础 |
 | [CLI 参考](docs/cli_zh.md) | 所有命令、参数、环境变量 |
 | [扩展指南](docs/extension_zh.md) | 通过 skill 和子命令添加 L2 协议 |
-| [AI 使用指南](docs/ai-usage_zh.md) | AI Agent 的 MCP 工具、swarm、checkpoint、handoff |
 
 ## License
 
