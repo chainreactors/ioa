@@ -212,4 +212,12 @@ msgs, _ := c.Read(ctx, info.ID, protocols.ReadOptions{All: true})
 
 ## License
 
-[LICENSE](LICENSE)
+[AGPL-3.0](LICENSE)
+
+---
+
+<p align="center">
+  <a href="https://star-history.com/#chainreactors/ioa&Date">
+    <img src="https://api.star-history.com/svg?repos=chainreactors/ioa&type=Date" alt="Star History" width="600">
+  </a>
+</p>
