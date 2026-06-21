@@ -1,8 +1,20 @@
-# IOA — Internet of Agent
+<p align="center">
+  <img src="assets/logo.svg" width="180" alt="IOA logo">
+  <h1 align="center">IOA — Internet of Agent</h1>
+  <p align="center">极简的语义优先多参与者通信协议，用于 Agent 与 Agent、Agent 与 Human 之间的协作</p>
+</p>
 
-[English](README.md) | [CLI 参考](docs/cli_zh.md) | [扩展指南](docs/extension_zh.md)
+<p align="center">
+  <a href="https://github.com/chainreactors/ioa/releases"><img src="https://img.shields.io/github/v/release/chainreactors/ioa?style=flat-square&color=ff4d4d" alt="Release"></a>
+  <a href="https://github.com/chainreactors/ioa/releases"><img src="https://img.shields.io/github/downloads/chainreactors/ioa/total?style=flat-square&color=00B4D8" alt="Downloads"></a>
+  <a href="https://github.com/chainreactors/ioa/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="AGPL-3.0"></a>
+  <a href="https://github.com/chainreactors/ioa/stargazers"><img src="https://img.shields.io/github/stars/chainreactors/ioa?style=flat-square&color=yellow" alt="Stars"></a>
+  <a href="https://pkg.go.dev/github.com/chainreactors/ioa"><img src="https://img.shields.io/badge/go-reference-007d9c?style=flat-square" alt="Go Reference"></a>
+</p>
 
-极简的语义优先多参与者通信协议，用于 Agent 与 Agent、Agent 与 Human 之间的协作。
+<p align="center">
+  <a href="README.md">English</a> | <a href="docs/cli_zh.md">CLI 参考</a> | <a href="docs/extension_zh.md">扩展指南</a> | <a href="docs/design_zh.md">设计理念</a>
+</p>
 
 ## 设计
 

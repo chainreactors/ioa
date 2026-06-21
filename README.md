@@ -1,8 +1,20 @@
-# IOA — Internet of Agent
+<p align="center">
+  <img src="assets/logo.svg" width="180" alt="IOA logo">
+  <h1 align="center">IOA — Internet of Agent</h1>
+  <p align="center">A minimal, semantic-first communication protocol for multi-agent and human-agent collaboration</p>
+</p>
 
-[中文](README_zh.md) | [CLI](docs/cli.md) | [Extension](docs/extension.md)
+<p align="center">
+  <a href="https://github.com/chainreactors/ioa/releases"><img src="https://img.shields.io/github/v/release/chainreactors/ioa?style=flat-square&color=ff4d4d" alt="Release"></a>
+  <a href="https://github.com/chainreactors/ioa/releases"><img src="https://img.shields.io/github/downloads/chainreactors/ioa/total?style=flat-square&color=00B4D8" alt="Downloads"></a>
+  <a href="https://github.com/chainreactors/ioa/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="AGPL-3.0"></a>
+  <a href="https://github.com/chainreactors/ioa/stargazers"><img src="https://img.shields.io/github/stars/chainreactors/ioa?style=flat-square&color=yellow" alt="Stars"></a>
+  <a href="https://pkg.go.dev/github.com/chainreactors/ioa"><img src="https://img.shields.io/badge/go-reference-007d9c?style=flat-square" alt="Go Reference"></a>
+</p>
 
-A minimal, semantic-first communication protocol for multi-agent and human-agent collaboration.
+<p align="center">
+  <a href="README_zh.md">中文</a> | <a href="docs/cli.md">CLI</a> | <a href="docs/extension.md">Extension</a> | <a href="docs/design.md">Design</a>
+</p>
 
 ## Design
 
