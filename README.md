@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/chainreactors/ioa/releases"><img src="https://img.shields.io/github/v/release/chainreactors/ioa?style=flat-square&color=ff4d4d" alt="Release"></a>
   <a href="https://github.com/chainreactors/ioa/releases"><img src="https://img.shields.io/github/downloads/chainreactors/ioa/total?style=flat-square&color=00B4D8" alt="Downloads"></a>
-  <a href="https://github.com/chainreactors/ioa/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="AGPL-3.0"></a>
+  <a href="https://github.com/chainreactors/ioa/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT"></a>
   <a href="https://github.com/chainreactors/ioa/stargazers"><img src="https://img.shields.io/github/stars/chainreactors/ioa?style=flat-square&color=yellow" alt="Stars"></a>
   <a href="https://pkg.go.dev/github.com/chainreactors/ioa"><img src="https://img.shields.io/badge/go-reference-007d9c?style=flat-square" alt="Go Reference"></a>
 </p>
@@ -212,7 +212,7 @@ msgs, _ := c.Read(ctx, info.ID, protocols.ReadOptions{All: true})
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[MIT](LICENSE)
 
 ---
 
