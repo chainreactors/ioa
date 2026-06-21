@@ -4,79 +4,101 @@
       <stop offset="0%" stop-color="#800000"/>
       <stop offset="100%" stop-color="#ff4d4d"/>
     </linearGradient>
-    <radialGradient id="spaceGlow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0%" stop-color="#d90429" stop-opacity="0.12"/>
-      <stop offset="100%" stop-color="#d90429" stop-opacity="0"/>
+    <linearGradient id="gr2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#800000"/>
+      <stop offset="100%" stop-color="#ff4d4d"/>
+    </linearGradient>
+    <radialGradient id="pulse" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#ff4d4d" stop-opacity="0.3"/>
+      <stop offset="40%" stop-color="#d90429" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#800000" stop-opacity="0"/>
     </radialGradient>
     <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="b2"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="b2"/>
       <feMerge>
         <feMergeNode in="b2"/>
         <feMergeNode in="b1"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
-    <marker id="arrow" viewBox="0 0 10 7" refX="9" refY="3.5"
-            markerWidth="8" markerHeight="6" orient="auto-start-reverse">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#ff4d4d" opacity="0.7"/>
-    </marker>
+    <filter id="heavyGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="b1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="20" result="b2"/>
+      <feMerge>
+        <feMergeNode in="b2"/>
+        <feMergeNode in="b1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
 
-  <!-- Space boundary — subtle rounded region -->
-  <circle cx="256" cy="256" r="190" fill="url(#spaceGlow)"/>
-  <circle cx="256" cy="256" r="190" fill="none" stroke="url(#gr)" stroke-width="1.5"
-          stroke-dasharray="12 8" opacity="0.2"/>
+  <!-- Central energy pulse -->
+  <circle cx="256" cy="256" r="200" fill="url(#pulse)"/>
 
-  <!-- Message arcs with directional arrows (curved paths between nodes) -->
-  <!-- Node A (top) → Node B (bottom-right) -->
-  <path d="M256,120 Q340,200 370,340"
-        fill="none" stroke="url(#gr)" stroke-width="2.5" opacity="0.5"
-        stroke-linecap="round" marker-end="url(#arrow)"/>
-
-  <!-- Node B (bottom-right) → Node C (bottom-left) -->
-  <path d="M370,360 Q256,420 150,340"
-        fill="none" stroke="url(#gr)" stroke-width="2.5" opacity="0.5"
-        stroke-linecap="round" marker-end="url(#arrow)"/>
-
-  <!-- Node C (bottom-left) → Node A (top) -->
-  <path d="M140,320 Q170,200 256,130"
-        fill="none" stroke="url(#gr)" stroke-width="2.5" opacity="0.5"
-        stroke-linecap="round" marker-end="url(#arrow)"/>
-
-  <!-- Ref arc — Node A → Node C (cross-reference, lighter) -->
-  <path d="M245,115 Q200,230 148,310"
-        fill="none" stroke="#ff4d4d" stroke-width="1.2" opacity="0.2"
-        stroke-dasharray="4 6" stroke-linecap="round" marker-end="url(#arrow)"/>
-
-  <!-- Ref arc — Node B → Node A (cross-reference, lighter) -->
-  <path d="M365,330 Q320,210 262,125"
-        fill="none" stroke="#ff4d4d" stroke-width="1.2" opacity="0.2"
-        stroke-dasharray="4 6" stroke-linecap="round" marker-end="url(#arrow)"/>
-
-  <!-- Node A (top) — hexagon, slightly larger = primary agent -->
-  <g filter="url(#glow)">
-    <polygon points="256,88 274,98 274,118 256,128 238,118 238,98"
-             fill="#d90429" fill-opacity="0.35" stroke="url(#gr)" stroke-width="2.5"/>
-    <circle cx="256" cy="108" r="4" fill="#ffffff"/>
+  <!-- Orbital rings — three elliptical orbits crossing at center -->
+  <g stroke="url(#gr)" fill="none" opacity="0.2" stroke-width="1.5">
+    <ellipse cx="256" cy="256" rx="170" ry="65" transform="rotate(-30 256 256)"/>
+    <ellipse cx="256" cy="256" rx="170" ry="65" transform="rotate(30 256 256)"/>
+    <ellipse cx="256" cy="256" rx="170" ry="65" transform="rotate(90 256 256)"/>
   </g>
 
-  <!-- Node B (bottom-right) — hexagon -->
+  <!-- Message streams — thick glowing arcs forming a triangle -->
   <g filter="url(#glow)">
-    <polygon points="376,328 394,338 394,358 376,368 358,358 358,338"
-             fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="2"/>
-    <circle cx="376" cy="348" r="3.5" fill="#ffffff"/>
+    <!-- A → B -->
+    <path d="M256,108 Q380,180 376,348"
+          fill="none" stroke="url(#gr)" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+    <!-- B → C -->
+    <path d="M370,355 Q256,440 142,335"
+          fill="none" stroke="url(#gr)" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+    <!-- C → A -->
+    <path d="M136,325 Q130,180 256,112"
+          fill="none" stroke="url(#gr2)" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
   </g>
 
-  <!-- Node C (bottom-left) — hexagon -->
-  <g filter="url(#glow)">
-    <polygon points="140,308 158,318 158,338 140,348 122,338 122,318"
-             fill="#d90429" fill-opacity="0.3" stroke="url(#gr)" stroke-width="2"/>
-    <circle cx="140" cy="328" r="3.5" fill="#ffffff"/>
+  <!-- Inner triangle frame — sharp geometric accent -->
+  <polygon points="256,105 380,352 132,332"
+           fill="none" stroke="#ff4d4d" stroke-width="1" opacity="0.15"/>
+
+  <!-- Node A (top) — large hexagon -->
+  <g filter="url(#heavyGlow)" transform="translate(256,105)">
+    <polygon points="0,-28 24,-14 24,14 0,28 -24,14 -24,-14"
+             fill="#d90429" fill-opacity="0.4" stroke="url(#gr)" stroke-width="3" stroke-linejoin="round"/>
+    <circle r="6" fill="#ffffff"/>
   </g>
 
-  <!-- Small message dots along arcs — representing in-flight messages -->
-  <circle cx="310" cy="220" r="3" fill="#ff4d4d" opacity="0.6" filter="url(#glow)"/>
-  <circle cx="260" cy="390" r="3" fill="#ff4d4d" opacity="0.6" filter="url(#glow)"/>
-  <circle cx="185" cy="225" r="3" fill="#ff4d4d" opacity="0.6" filter="url(#glow)"/>
+  <!-- Node B (bottom-right) — large hexagon -->
+  <g filter="url(#heavyGlow)" transform="translate(380,352)">
+    <polygon points="0,-28 24,-14 24,14 0,28 -24,14 -24,-14"
+             fill="#d90429" fill-opacity="0.4" stroke="url(#gr)" stroke-width="3" stroke-linejoin="round"/>
+    <circle r="6" fill="#ffffff"/>
+  </g>
+
+  <!-- Node C (bottom-left) — large hexagon -->
+  <g filter="url(#heavyGlow)" transform="translate(132,332)">
+    <polygon points="0,-28 24,-14 24,14 0,28 -24,14 -24,-14"
+             fill="#d90429" fill-opacity="0.4" stroke="url(#gr)" stroke-width="3" stroke-linejoin="round"/>
+    <circle r="6" fill="#ffffff"/>
+  </g>
+
+  <!-- Center nexus — the Space convergence point -->
+  <g filter="url(#heavyGlow)">
+    <circle cx="256" cy="262" r="18" fill="#d90429" fill-opacity="0.15" stroke="url(#gr)" stroke-width="2"/>
+    <circle cx="256" cy="262" r="8" fill="#ffffff" opacity="0.9"/>
+    <circle cx="256" cy="262" r="3" fill="#ff4d4d"/>
+  </g>
+
+  <!-- Energy particles along arcs -->
+  <g filter="url(#glow)">
+    <circle cx="320" cy="170" r="4" fill="#ff4d4d" opacity="0.8"/>
+    <circle cx="390" cy="280" r="3" fill="#ff4d4d" opacity="0.6"/>
+    <circle cx="300" cy="400" r="4" fill="#ff4d4d" opacity="0.8"/>
+    <circle cx="190" cy="395" r="3" fill="#ff4d4d" opacity="0.6"/>
+    <circle cx="130" cy="250" r="4" fill="#ff4d4d" opacity="0.8"/>
+    <circle cx="195" cy="145" r="3" fill="#ff4d4d" opacity="0.6"/>
+  </g>
+
+  <!-- Outer ring accent -->
+  <circle cx="256" cy="256" r="210" fill="none" stroke="url(#gr)" stroke-width="1" opacity="0.1"/>
+  <circle cx="256" cy="256" r="230" fill="none" stroke="#ff4d4d" stroke-width="0.5" opacity="0.06"/>
 </svg>
