@@ -56,6 +56,15 @@ func (s *SQLiteStore) migrate() error {
 			description TEXT NOT NULL DEFAULT '',
 			meta_json TEXT NOT NULL DEFAULT '{}'
 		);
+		CREATE TABLE IF NOT EXISTS node_identities (
+			namespace TEXT NOT NULL,
+			subject TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			claims_json TEXT NOT NULL DEFAULT '{}',
+			PRIMARY KEY (namespace, subject)
+		);
+		CREATE INDEX IF NOT EXISTS idx_node_identities_node_id
+			ON node_identities(node_id);
 		CREATE TABLE IF NOT EXISTS spaces (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL UNIQUE,
@@ -102,13 +111,28 @@ func (s *SQLiteStore) PutNode(node protocols.Node) error {
 }
 
 func (s *SQLiteStore) GetNode(nodeID string) (protocols.Node, bool, error) {
-	return sqliteScanNode(s.db.QueryRow(
+	node, ok, err := sqliteScanNode(s.db.QueryRow(
 		`SELECT id,name,COALESCE(description,''),meta_json FROM nodes WHERE id=?`, nodeID))
+	return s.withNodeIdentities(node, ok, err)
 }
 
 func (s *SQLiteStore) GetNodeByName(name string) (protocols.Node, bool, error) {
-	return sqliteScanNode(s.db.QueryRow(
+	node, ok, err := sqliteScanNode(s.db.QueryRow(
 		`SELECT id,name,COALESCE(description,''),meta_json FROM nodes WHERE name=?`, name))
+	return s.withNodeIdentities(node, ok, err)
+}
+
+func (s *SQLiteStore) GetNodeByIdentity(namespace, subject string) (protocols.Node, bool, error) {
+	var nodeID string
+	if err := s.db.QueryRow(
+		`SELECT node_id FROM node_identities WHERE namespace=? AND subject=?`,
+		namespace, subject).Scan(&nodeID); err != nil {
+		if err == sql.ErrNoRows {
+			return protocols.Node{}, false, nil
+		}
+		return protocols.Node{}, false, err
+	}
+	return s.GetNode(nodeID)
 }
 
 func (s *SQLiteStore) ListNodes() ([]protocols.Node, error) {
@@ -117,7 +141,6 @@ func (s *SQLiteStore) ListNodes() ([]protocols.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var nodes []protocols.Node
 	for rows.Next() {
 		var id, name, desc, metaJSON string
@@ -128,7 +151,39 @@ func (s *SQLiteStore) ListNodes() ([]protocols.Node, error) {
 		sqliteFromJSON(metaJSON, &meta)
 		nodes = append(nodes, protocols.Node{ID: id, Name: name, Description: desc, Meta: meta})
 	}
-	return nodes, rows.Err()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	for i := range nodes {
+		node, _, err := s.withNodeIdentities(nodes[i], true, nil)
+		if err != nil {
+			return nil, err
+		}
+		nodes[i] = node
+	}
+	return nodes, nil
+}
+
+func (s *SQLiteStore) PutNodeIdentity(nodeID string, binding protocols.IdentityBinding) error {
+	claimsJSON, err := toJSON(binding.Claims)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO node_identities (namespace,subject,node_id,claims_json) VALUES (?,?,?,?)
+		 ON CONFLICT(namespace,subject) DO UPDATE SET claims_json=excluded.claims_json
+		 WHERE node_id=excluded.node_id`,
+		binding.Namespace, binding.Subject, nodeID, claimsJSON)
+	return err
+}
+
+func (s *SQLiteStore) DeleteNodeIdentity(nodeID, namespace, subject string) error {
+	_, err := s.db.Exec(
+		`DELETE FROM node_identities WHERE node_id=? AND namespace=? AND subject=?`,
+		nodeID, namespace, subject)
+	return err
 }
 
 // --- Spaces ---
@@ -223,7 +278,6 @@ func (s *SQLiteStore) GetSpaceNodes(spaceID string) ([]protocols.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var nodes []protocols.Node
 	for rows.Next() {
 		var id, name, desc, metaJSON, memberDesc string
@@ -237,7 +291,19 @@ func (s *SQLiteStore) GetSpaceNodes(spaceID string) ([]protocols.Node, error) {
 		}
 		nodes = append(nodes, protocols.Node{ID: id, Name: name, Description: desc, Meta: meta})
 	}
-	return nodes, rows.Err()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	for i := range nodes {
+		node, _, err := s.withNodeIdentities(nodes[i], true, nil)
+		if err != nil {
+			return nil, err
+		}
+		nodes[i] = node
+	}
+	return nodes, nil
 }
 
 // --- Messages ---
@@ -457,6 +523,36 @@ func sqliteScanNode(row *sql.Row) (protocols.Node, bool, error) {
 	meta := map[string]interface{}{}
 	sqliteFromJSON(metaJSON, &meta)
 	return protocols.Node{ID: id, Name: name, Description: desc, Meta: meta}, true, nil
+}
+
+func (s *SQLiteStore) withNodeIdentities(node protocols.Node, ok bool, err error) (protocols.Node, bool, error) {
+	if err != nil || !ok {
+		return node, ok, err
+	}
+	rows, err := s.db.Query(
+		`SELECT namespace,subject,claims_json FROM node_identities WHERE node_id=? ORDER BY namespace,subject`,
+		node.ID)
+	if err != nil {
+		return protocols.Node{}, false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var namespace, subject, claimsJSON string
+		if err := rows.Scan(&namespace, &subject, &claimsJSON); err != nil {
+			return protocols.Node{}, false, err
+		}
+		claims := map[string]any{}
+		sqliteFromJSON(claimsJSON, &claims)
+		node.Identities = append(node.Identities, protocols.IdentityBinding{
+			Namespace: namespace,
+			Subject:   subject,
+			Claims:    claims,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return protocols.Node{}, false, err
+	}
+	return node, true, nil
 }
 
 func sqliteScanMessage(row *sql.Row) (protocols.Message, bool, error) {

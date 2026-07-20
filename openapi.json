@@ -9,6 +9,51 @@
     "host": "127.0.0.1:8765",
     "basePath": "/",
     "paths": {
+        "/auth/register": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "Register authenticated node",
+                "parameters": [
+                    {
+                        "description": "Node registration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/protocols.AuthRegister"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.AuthResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Return ok when the IOA server and store are ready",
@@ -202,6 +247,47 @@
                 }
             }
         },
+        "/nodes/resolve": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "Resolve node identity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Identity namespace",
+                        "name": "namespace",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Identity subject",
+                        "name": "subject",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.Node"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/nodes/{nodeID}": {
             "get": {
                 "description": "Return a specific node by its ID",
@@ -238,6 +324,106 @@
                         "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/nodes/{nodeID}/identities": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "Upsert node identity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "nodeID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Authenticated node ID",
+                        "name": "X-Node-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Identity binding",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/protocols.IdentityBinding"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.Node"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nodes"
+                ],
+                "summary": "Delete node identity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "nodeID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Authenticated node ID",
+                        "name": "X-Node-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Identity namespace",
+                        "name": "namespace",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Identity subject",
+                        "name": "subject",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/protocols.Node"
                         }
                     }
                 }
@@ -732,10 +918,66 @@
         }
     },
     "definitions": {
+        "protocols.AuthRegister": {
+            "type": "object",
+            "properties": {
+                "access_key": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "identities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/protocols.IdentityBinding"
+                    }
+                },
+                "meta": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "protocols.AuthResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "protocols.ErrorResponse": {
             "type": "object",
             "properties": {
                 "detail": {
+                    "type": "string"
+                }
+            }
+        },
+        "protocols.IdentityBinding": {
+            "type": "object",
+            "properties": {
+                "claims": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "subject": {
                     "type": "string"
                 }
             }
@@ -784,6 +1026,12 @@
                 "id": {
                     "type": "string"
                 },
+                "identities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/protocols.IdentityBinding"
+                    }
+                },
                 "meta": {
                     "type": "object",
                     "additionalProperties": {}
@@ -798,6 +1046,15 @@
             "properties": {
                 "description": {
                     "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "identities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/protocols.IdentityBinding"
+                    }
                 },
                 "meta": {
                     "type": "object",

@@ -66,16 +66,118 @@ func (s *Service) RegisterNode(ctx context.Context, body protocols.NodeCreate) (
 	if strings.TrimSpace(body.Name) == "" {
 		return protocols.Node{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "name is required")
 	}
+	bindings, err := protocols.NormalizeIdentityBindings(body.Identities)
+	if err != nil {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "%s", err)
+	}
+	nodeID := strings.TrimSpace(body.ID)
+	if nodeID == "" {
+		nodeID = protocols.NewID()
+	} else if !protocols.ValidID(nodeID) {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "invalid node id")
+	}
+	if len(bindings) > 0 {
+		existing, ok, err := s.resolveIdentityBindings(bindings)
+		if err != nil {
+			return protocols.Node{}, err
+		}
+		if ok {
+			existing.Name = body.Name
+			existing.Description = body.Description
+			existing.Meta = defaultMeta(body.Meta)
+			if err := s.store.PutNode(existing); err != nil {
+				return protocols.Node{}, err
+			}
+			if err := s.putIdentityBindings(existing.ID, bindings); err != nil {
+				return protocols.Node{}, err
+			}
+			return s.GetNode(ctx, existing.ID)
+		}
+	}
+	if existing, ok, err := s.store.GetNode(nodeID); err != nil {
+		return protocols.Node{}, err
+	} else if ok {
+		existing.Name = body.Name
+		existing.Description = body.Description
+		existing.Meta = defaultMeta(body.Meta)
+		if err := s.store.PutNode(existing); err != nil {
+			return protocols.Node{}, err
+		}
+		if err := s.putIdentityBindings(existing.ID, bindings); err != nil {
+			return protocols.Node{}, err
+		}
+		return s.GetNode(ctx, existing.ID)
+	}
+	if err := s.validateIdentityOwnership(nodeID, bindings); err != nil {
+		return protocols.Node{}, err
+	}
 	node := protocols.Node{
-		ID:          protocols.NewID(),
+		ID:          nodeID,
 		Name:        body.Name,
 		Description: body.Description,
 		Meta:        defaultMeta(body.Meta),
+		Identities:  bindings,
 	}
 	if err := s.store.PutNode(node); err != nil {
 		return protocols.Node{}, err
 	}
+	if err := s.putIdentityBindings(node.ID, bindings); err != nil {
+		return protocols.Node{}, err
+	}
+	return s.GetNode(ctx, node.ID)
+}
+
+func (s *Service) ResolveNodeIdentity(ctx context.Context, namespace, subject string) (protocols.Node, error) {
+	namespace = strings.TrimSpace(namespace)
+	subject = strings.TrimSpace(subject)
+	if namespace == "" || subject == "" {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "namespace and subject are required")
+	}
+	node, ok, err := s.store.GetNodeByIdentity(namespace, subject)
+	if err != nil {
+		return protocols.Node{}, err
+	}
+	if !ok {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusNotFound, "identity %q/%q not found", namespace, subject)
+	}
 	return node, nil
+}
+
+func (s *Service) UpsertNodeIdentity(ctx context.Context, callerNodeID, nodeID string, binding protocols.IdentityBinding) (protocols.Node, error) {
+	if callerNodeID == "" || callerNodeID != nodeID {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusForbidden, "cannot modify another node's identities")
+	}
+	bindings, err := protocols.NormalizeIdentityBindings([]protocols.IdentityBinding{binding})
+	if err != nil {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "%s", err)
+	}
+	if _, ok, err := s.store.GetNode(nodeID); err != nil {
+		return protocols.Node{}, err
+	} else if !ok {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusNotFound, "Node '%s' not found", nodeID)
+	}
+	if err := s.validateIdentityOwnership(nodeID, bindings); err != nil {
+		return protocols.Node{}, err
+	}
+	if err := s.store.PutNodeIdentity(nodeID, bindings[0]); err != nil {
+		return protocols.Node{}, err
+	}
+	return s.GetNode(ctx, nodeID)
+}
+
+func (s *Service) DeleteNodeIdentity(ctx context.Context, callerNodeID, nodeID, namespace, subject string) (protocols.Node, error) {
+	if callerNodeID == "" || callerNodeID != nodeID {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusForbidden, "cannot modify another node's identities")
+	}
+	namespace = strings.TrimSpace(namespace)
+	subject = strings.TrimSpace(subject)
+	if namespace == "" || subject == "" {
+		return protocols.Node{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "namespace and subject are required")
+	}
+	if err := s.store.DeleteNodeIdentity(nodeID, namespace, subject); err != nil {
+		return protocols.Node{}, err
+	}
+	return s.GetNode(ctx, nodeID)
 }
 
 func (s *Service) GetNode(ctx context.Context, nodeID string) (protocols.Node, error) {
@@ -265,12 +367,44 @@ func (s *Service) AuthRegister(ctx context.Context, body protocols.AuthRegister)
 	if strings.TrimSpace(body.Name) == "" {
 		return protocols.AuthResponse{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "name is required")
 	}
-	node, ok, err := s.store.GetNodeByName(body.Name)
+	bindings, err := protocols.NormalizeIdentityBindings(body.Identities)
+	if err != nil {
+		return protocols.AuthResponse{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "%s", err)
+	}
+	body.ID = strings.TrimSpace(body.ID)
+	if body.ID != "" && !protocols.ValidID(body.ID) {
+		return protocols.AuthResponse{}, protocols.ProtocolError(http.StatusUnprocessableEntity, "invalid node id")
+	}
+	var node protocols.Node
+	var ok bool
+	if len(bindings) > 0 {
+		node, ok, err = s.resolveIdentityBindings(bindings)
+	} else if body.ID != "" {
+		node, ok, err = s.store.GetNode(body.ID)
+	} else {
+		node, ok, err = s.store.GetNodeByName(body.Name)
+	}
 	if err != nil {
 		return protocols.AuthResponse{}, err
 	}
-	if !ok {
-		node, err = s.RegisterNode(ctx, protocols.NodeCreate{Name: body.Name, Description: body.Description, Meta: body.Meta})
+	if ok {
+		if err := s.validateIdentityOwnership(node.ID, bindings); err != nil {
+			return protocols.AuthResponse{}, err
+		}
+		node.Name = body.Name
+		node.Description = body.Description
+		node.Meta = defaultMeta(body.Meta)
+		if err := s.store.PutNode(node); err != nil {
+			return protocols.AuthResponse{}, err
+		}
+		if err := s.putIdentityBindings(node.ID, bindings); err != nil {
+			return protocols.AuthResponse{}, err
+		}
+	} else {
+		node, err = s.RegisterNode(ctx, protocols.NodeCreate{
+			ID: body.ID, Name: body.Name, Description: body.Description,
+			Meta: body.Meta, Identities: bindings,
+		})
 		if err != nil {
 			return protocols.AuthResponse{}, err
 		}
@@ -280,6 +414,46 @@ func (s *Service) AuthRegister(ctx context.Context, body protocols.AuthRegister)
 		return protocols.AuthResponse{}, err
 	}
 	return protocols.AuthResponse{ID: node.ID, Name: node.Name, Token: token}, nil
+}
+
+func (s *Service) resolveIdentityBindings(bindings []protocols.IdentityBinding) (protocols.Node, bool, error) {
+	var resolved protocols.Node
+	for _, binding := range bindings {
+		node, ok, err := s.store.GetNodeByIdentity(binding.Namespace, binding.Subject)
+		if err != nil {
+			return protocols.Node{}, false, err
+		}
+		if !ok {
+			continue
+		}
+		if resolved.ID != "" && resolved.ID != node.ID {
+			return protocols.Node{}, false, protocols.ProtocolError(http.StatusConflict, "identity bindings resolve to different nodes")
+		}
+		resolved = node
+	}
+	return resolved, resolved.ID != "", nil
+}
+
+func (s *Service) validateIdentityOwnership(nodeID string, bindings []protocols.IdentityBinding) error {
+	for _, binding := range bindings {
+		node, ok, err := s.store.GetNodeByIdentity(binding.Namespace, binding.Subject)
+		if err != nil {
+			return err
+		}
+		if ok && node.ID != nodeID {
+			return protocols.ProtocolError(http.StatusConflict, "identity %q/%q is already bound to node %s", binding.Namespace, binding.Subject, node.ID)
+		}
+	}
+	return nil
+}
+
+func (s *Service) putIdentityBindings(nodeID string, bindings []protocols.IdentityBinding) error {
+	for _, binding := range bindings {
+		if err := s.store.PutNodeIdentity(nodeID, binding); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) ResolveToken(token string) (protocols.Node, error) {

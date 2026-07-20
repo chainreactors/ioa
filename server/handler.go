@@ -77,6 +77,17 @@ func (h *Handler) serveAuth(w http.ResponseWriter, r *http.Request, segments []s
 	writeError(w, http.StatusNotFound, "not found")
 }
 
+// authRegister registers or authenticates a node while preserving a caller-provided ID.
+//
+//	@Summary		Register authenticated node
+//	@Tags			nodes
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		protocols.AuthRegister	true	"Node registration"
+//	@Success		201		{object}	protocols.AuthResponse
+//	@Failure		409		{object}	protocols.ErrorResponse
+//	@Failure		422		{object}	protocols.ErrorResponse
+//	@Router			/auth/register [post]
 func (h *Handler) authRegister(w http.ResponseWriter, r *http.Request) {
 	var body protocols.AuthRegister
 	if !decodeJSON(w, r, &body) {
@@ -101,6 +112,23 @@ func (h *Handler) serveNodes(w http.ResponseWriter, r *http.Request, segments []
 		return
 	}
 
+	if len(segments) == 2 && segments[1] == "resolve" && r.Method == http.MethodGet {
+		h.resolveNodeIdentity(w, r)
+		return
+	}
+
+	if len(segments) == 3 && segments[2] == "identities" {
+		switch r.Method {
+		case http.MethodPut:
+			h.upsertNodeIdentity(w, r, segments[1])
+		case http.MethodDelete:
+			h.deleteNodeIdentity(w, r, segments[1])
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+		return
+	}
+
 	if len(segments) == 2 && r.Method == http.MethodGet {
 		h.getNode(w, r, segments[1])
 		return
@@ -117,6 +145,73 @@ func (h *Handler) serveNodes(w http.ResponseWriter, r *http.Request, segments []
 	}
 
 	writeError(w, methodOrNotFound(r.Method, segments, "nodes"), "not found")
+}
+
+// resolveNodeIdentity resolves an external identity binding to its IOA node.
+//
+//	@Summary		Resolve node identity
+//	@Tags			nodes
+//	@Produce		json
+//	@Param			namespace	query		string	true	"Identity namespace"
+//	@Param			subject		query		string	true	"Identity subject"
+//	@Success		200			{object}	protocols.Node
+//	@Failure		404			{object}	protocols.ErrorResponse
+//	@Router			/nodes/resolve [get]
+func (h *Handler) resolveNodeIdentity(w http.ResponseWriter, r *http.Request) {
+	node, err := h.service.ResolveNodeIdentity(r.Context(), r.URL.Query().Get("namespace"), r.URL.Query().Get("subject"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, node)
+}
+
+// upsertNodeIdentity binds an external identity to the authenticated node.
+//
+//	@Summary		Upsert node identity
+//	@Tags			nodes
+//	@Accept			json
+//	@Produce		json
+//	@Param			nodeID		path		string					true	"Node ID"
+//	@Param			X-Node-ID	header		string					true	"Authenticated node ID"
+//	@Param			body		body		protocols.IdentityBinding	true	"Identity binding"
+//	@Success		200			{object}	protocols.Node
+//	@Failure		409			{object}	protocols.ErrorResponse
+//	@Router			/nodes/{nodeID}/identities [put]
+func (h *Handler) upsertNodeIdentity(w http.ResponseWriter, r *http.Request, nodeID string) {
+	var binding protocols.IdentityBinding
+	if !decodeJSON(w, r, &binding) {
+		return
+	}
+	node, err := h.service.UpsertNodeIdentity(r.Context(), r.Header.Get("X-Node-ID"), nodeID, binding)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, node)
+}
+
+// deleteNodeIdentity removes an external identity binding from the authenticated node.
+//
+//	@Summary		Delete node identity
+//	@Tags			nodes
+//	@Produce		json
+//	@Param			nodeID		path		string	true	"Node ID"
+//	@Param			X-Node-ID	header		string	true	"Authenticated node ID"
+//	@Param			namespace	query		string	true	"Identity namespace"
+//	@Param			subject		query		string	true	"Identity subject"
+//	@Success		200			{object}	protocols.Node
+//	@Router			/nodes/{nodeID}/identities [delete]
+func (h *Handler) deleteNodeIdentity(w http.ResponseWriter, r *http.Request, nodeID string) {
+	node, err := h.service.DeleteNodeIdentity(
+		r.Context(), r.Header.Get("X-Node-ID"), nodeID,
+		r.URL.Query().Get("namespace"), r.URL.Query().Get("subject"),
+	)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, node)
 }
 
 func (h *Handler) serveMessages(w http.ResponseWriter, r *http.Request, segments []string) {
