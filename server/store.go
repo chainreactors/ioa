@@ -8,7 +8,10 @@ type Store interface {
 	PutNode(node protocols.Node) error
 	GetNode(nodeID string) (protocols.Node, bool, error)
 	GetNodeByName(name string) (protocols.Node, bool, error)
+	GetNodeByIdentity(namespace, subject string) (protocols.Node, bool, error)
 	ListNodes() ([]protocols.Node, error)
+	PutNodeIdentity(nodeID string, binding protocols.IdentityBinding) error
+	DeleteNodeIdentity(nodeID, namespace, subject string) error
 
 	PutSpaceIfAbsent(space protocols.Space) (protocols.Space, error)
 	GetSpace(spaceID string) (protocols.Space, bool, error)

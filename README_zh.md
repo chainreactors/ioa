@@ -185,6 +185,23 @@ curl -X POST http://localhost:8765/spaces/<sid>/messages -H "X-Node-ID: <id>" -d
 curl http://localhost:8765/spaces/<sid>/messages?all=true
 ```
 
+`NodeRef{ID, Authority}` 是任意宿主系统中节点的可移植引用。接入系统实现
+`protocols.Identity`，SDK 只在内存中保存它与 IOA Node 的 binding，并在注册时自动提交：
+
+```go
+type WebIdentity struct{ Ref protocols.NodeRef }
+func (i WebIdentity) IOABinding() protocols.IdentityBinding {
+    return protocols.IdentityBinding{Namespace: "aiscan.web", Subject: i.Ref.URI()}
+}
+
+c, _ := client.NewClient("http://127.0.0.1:8765", "")
+_ = c.Bind(WebIdentity{Ref: webNodeRef})
+_ = c.EnsureRegistered(ctx, "bot", "", nil)
+```
+
+绑定按 `(namespace, subject)` 唯一索引，可通过 `GET /nodes/resolve` 解析；
+节点所有者可通过 `/nodes/{id}/identities` 更新或删除绑定。
+
 ### MCP
 
 端点：`http://<host>:<port>/mcp` — 任何 MCP 客户端可直接连接。

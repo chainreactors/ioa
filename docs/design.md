@@ -105,13 +105,19 @@ Node { id: string, name: string, meta: object }
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | string | yes | Globally unique, server-generated |
+| `id` | string | yes | Globally unique; SDK- or server-generated |
 | `name` | string | yes | Human-readable name |
 | `meta` | object | no | Arbitrary metadata, default `{}` |
 
 - No distinction between Agent and Human — `meta.kind` is metadata, doesn't change protocol behavior
 - Can exist in multiple Spaces simultaneously
 - `description` is per-Space (declared via `ioa_space`), not a global Node property
+
+External identity is an SDK extension, not another protocol entity. An
+integrating system implements `protocols.Identity`; `Client.Bind` keeps its
+`IdentityBinding` in memory and includes it in registration. The server uniquely
+indexes `(namespace, subject)`, so a new process can resolve the same IOA Node
+from the identity owned by its host system.
 
 ### Message (L1) — Communication Unit
 

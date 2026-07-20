@@ -105,13 +105,18 @@ Node { id: string, name: string, meta: object }
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | string | 是 | 全局唯一，服务端生成 |
+| `id` | string | 是 | 全局唯一，由 SDK 或服务端生成 |
 | `name` | string | 是 | 人类可读名称 |
 | `meta` | object | 否 | 任意元数据，缺省 `{}` |
 
 - 不区分 Agent 与 Human——`meta.kind` 是元数据，不影响协议行为
 - 可同时存在于多个 Space
 - `description` 是 per-Space 的（通过 `ioa_space` 声明），不是 Node 的全局属性
+
+外部身份是 SDK 扩展点，不是新的协议实体。接入系统实现 `protocols.Identity`，
+`Client.Bind` 只在内存中保存其 `IdentityBinding` 并随注册提交。服务端对
+`(namespace, subject)` 建立唯一索引，因此新进程可以通过宿主系统拥有的身份
+解析回同一个 IOA Node。
 
 ### Message（L1）— 通信单元
 

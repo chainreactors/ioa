@@ -185,6 +185,25 @@ curl -X POST http://localhost:8765/spaces/<sid>/messages -H "X-Node-ID: <id>" -d
 curl http://localhost:8765/spaces/<sid>/messages?all=true
 ```
 
+`NodeRef{ID, Authority}` is the portable reference for a node in any host
+system. Integrating systems implement `protocols.Identity`; the SDK keeps the
+binding to an IOA Node in memory and submits it during registration:
+
+```go
+type WebIdentity struct{ Ref protocols.NodeRef }
+func (i WebIdentity) IOABinding() protocols.IdentityBinding {
+    return protocols.IdentityBinding{Namespace: "aiscan.web", Subject: i.Ref.URI()}
+}
+
+c, _ := client.NewClient("http://127.0.0.1:8765", "")
+_ = c.Bind(WebIdentity{Ref: webNodeRef})
+_ = c.EnsureRegistered(ctx, "bot", "", nil)
+```
+
+Bindings are uniquely indexed by `(namespace, subject)` and resolve through
+`GET /nodes/resolve`. They may be updated or removed through
+`/nodes/{id}/identities` by the owning node.
+
 ### MCP
 
 Endpoint: `http://<host>:<port>/mcp` — any MCP client connects directly.

@@ -8,10 +8,11 @@ type Ref struct {
 }
 
 type Node struct {
-	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	Meta        map[string]any `json:"meta"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Meta        map[string]any    `json:"meta"`
+	Identities  []IdentityBinding `json:"identities,omitempty"`
 }
 
 type Space struct {
@@ -21,8 +22,8 @@ type Space struct {
 }
 
 type SpaceInfo struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
 	Tags         []string `json:"tags,omitempty"`
 	Nodes        []Node   `json:"nodes"`
 	MessageCount int      `json:"message_count"`
@@ -90,9 +91,11 @@ func MergeTags(existing []string, incoming []string) []string {
 // --- request/response types (formerly api package) ---
 
 type NodeCreate struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	Meta        map[string]any `json:"meta"`
+	ID          string            `json:"id,omitempty"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Meta        map[string]any    `json:"meta"`
+	Identities  []IdentityBinding `json:"identities,omitempty"`
 }
 
 type SpaceCreate struct {
@@ -113,10 +116,12 @@ type MessageFilter struct {
 }
 
 type AuthRegister struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	AccessKey   string         `json:"access_key"`
-	Meta        map[string]any `json:"meta"`
+	ID          string            `json:"id,omitempty"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	AccessKey   string            `json:"access_key"`
+	Meta        map[string]any    `json:"meta"`
+	Identities  []IdentityBinding `json:"identities,omitempty"`
 }
 
 type AuthResponse struct {

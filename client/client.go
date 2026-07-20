@@ -12,19 +12,29 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/chainreactors/ioa/protocols"
 )
 
 type Client struct {
-	baseURL    *url.URL
-	httpClient *http.Client
-	nodeID     string
-	token      string
-	accessKey  string
+	mu            sync.RWMutex
+	baseURL       *url.URL
+	httpClient    *http.Client
+	nodeID        string
+	token         string
+	accessKey     string
+	authority     string
+	bound         bool
+	identities    []protocols.IdentityBinding
+	identityDirty bool
 }
 
 func NewClient(baseURL string, nodeID string) (*Client, error) {
+	return newClient(baseURL, nodeID, true)
+}
+
+func newClient(baseURL string, nodeID string, generateID bool) (*Client, error) {
 	parsed, err := url.Parse(strings.TrimRight(baseURL, "/"))
 	if err != nil {
 		return nil, err
@@ -37,16 +47,26 @@ func NewClient(baseURL string, nodeID string) (*Client, error) {
 		accessKey = parsed.User.Username()
 		parsed.User = nil
 	}
-	return &Client{
+	authority, err := protocols.CanonicalAuthority(parsed.String())
+	if err != nil {
+		return nil, err
+	}
+	c := &Client{
 		baseURL:    parsed,
 		httpClient: http.DefaultClient,
 		nodeID:     nodeID,
 		accessKey:  accessKey,
-	}, nil
+		authority:  authority,
+		bound:      nodeID != "",
+	}
+	if nodeID == "" && generateID {
+		c.nodeID = protocols.NewID()
+	}
+	return c, nil
 }
 
 func NewClientWithToken(baseURL string, token string) (*Client, error) {
-	c, err := NewClient(baseURL, "")
+	c, err := newClient(baseURL, "", false)
 	if err != nil {
 		return nil, err
 	}
@@ -55,19 +75,70 @@ func NewClientWithToken(baseURL string, token string) (*Client, error) {
 }
 
 func (c *Client) NodeID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.nodeID
 }
 
+func (c *Client) NodeRef() protocols.NodeRef {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return protocols.NodeRef{ID: c.nodeID, Authority: c.authority}
+}
+
+func (c *Client) Bound() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.bound
+}
+
 func (c *Client) AccessKey() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.accessKey
 }
 
+// Bind attaches an integrating system's identity to this client in memory.
+// The binding is sent on the next registration and can resolve an existing IOA
+// node even when this process started with a fresh local node ID.
+func (c *Client) Bind(identity protocols.Identity) error {
+	if identity == nil {
+		return fmt.Errorf("identity is required")
+	}
+	bindings, err := protocols.NormalizeIdentityBindings([]protocols.IdentityBinding{identity.IOABinding()})
+	if err != nil {
+		return err
+	}
+	binding := bindings[0]
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, existing := range c.identities {
+		if existing.Namespace == binding.Namespace && existing.Subject == binding.Subject {
+			c.identities[i] = binding
+			c.identityDirty = true
+			return nil
+		}
+	}
+	c.identities = append(c.identities, binding)
+	c.identityDirty = true
+	return nil
+}
+
+func (c *Client) identityBindings() []protocols.IdentityBinding {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]protocols.IdentityBinding(nil), c.identities...)
+}
+
 func (c *Client) EnsureRegistered(ctx context.Context, name, description string, meta map[string]interface{}) error {
-	if c.nodeID != "" {
+	c.mu.RLock()
+	bound, dirty := c.bound, c.identityDirty
+	c.mu.RUnlock()
+	if bound && !dirty {
 		return nil
 	}
-	if c.accessKey != "" {
-		_, err := c.Register(ctx, c.accessKey, name, description, meta)
+	if c.AccessKey() != "" {
+		_, err := c.Register(ctx, c.AccessKey(), name, description, meta)
 		return err
 	}
 	_, err := c.RegisterNode(ctx, name, description, meta)
@@ -75,14 +146,21 @@ func (c *Client) EnsureRegistered(ctx context.Context, name, description string,
 }
 
 func (c *Client) Register(ctx context.Context, accessKey, name, description string, meta map[string]interface{}) (protocols.AuthResponse, error) {
-	body := protocols.AuthRegister{Name: name, Description: description, AccessKey: accessKey, Meta: meta}
+	body := protocols.AuthRegister{
+		ID: c.NodeID(), Name: name, Description: description,
+		AccessKey: accessKey, Meta: meta, Identities: c.identityBindings(),
+	}
 	var resp protocols.AuthResponse
 	if err := c.do(ctx, http.MethodPost, "/auth/register", nil, body, &resp); err != nil {
 		return protocols.AuthResponse{}, err
 	}
+	c.mu.Lock()
 	c.token = resp.Token
 	c.nodeID = resp.ID
 	c.accessKey = accessKey
+	c.bound = true
+	c.identityDirty = false
+	c.mu.Unlock()
 	return resp, nil
 }
 
@@ -149,20 +227,51 @@ func (c *Client) ReadPublic(ctx context.Context, spaceID string, opts protocols.
 
 func (c *Client) RegisterNode(ctx context.Context, name, description string, meta map[string]interface{}) (protocols.Node, error) {
 	var node protocols.Node
-	if err := c.do(ctx, http.MethodPost, "/nodes", nil, protocols.NodeCreate{Name: name, Description: description, Meta: meta}, &node); err != nil {
+	body := protocols.NodeCreate{
+		ID: c.NodeID(), Name: name, Description: description,
+		Meta: meta, Identities: c.identityBindings(),
+	}
+	if err := c.do(ctx, http.MethodPost, "/nodes", nil, body, &node); err != nil {
 		return protocols.Node{}, err
 	}
+	c.mu.Lock()
 	c.nodeID = node.ID
+	c.bound = true
+	c.identityDirty = false
+	c.mu.Unlock()
 	return node, nil
 }
 
+func (c *Client) ResolveIdentity(ctx context.Context, namespace, subject string) (protocols.Node, error) {
+	values := url.Values{"namespace": {namespace}, "subject": {subject}}
+	var node protocols.Node
+	err := c.do(ctx, http.MethodGet, endpointWithQuery("/nodes/resolve", values), nil, nil, &node)
+	return node, err
+}
+
+func (c *Client) UpsertIdentity(ctx context.Context, binding protocols.IdentityBinding) (protocols.Node, error) {
+	var node protocols.Node
+	nodeID := c.NodeID()
+	err := c.do(ctx, http.MethodPut, "/nodes/"+url.PathEscape(nodeID)+"/identities", map[string]string{"X-Node-ID": nodeID}, binding, &node)
+	return node, err
+}
+
+func (c *Client) DeleteIdentity(ctx context.Context, namespace, subject string) (protocols.Node, error) {
+	values := url.Values{"namespace": {namespace}, "subject": {subject}}
+	var node protocols.Node
+	nodeID := c.NodeID()
+	err := c.do(ctx, http.MethodDelete, endpointWithQuery("/nodes/"+url.PathEscape(nodeID)+"/identities", values), map[string]string{"X-Node-ID": nodeID}, nil, &node)
+	return node, err
+}
+
 func (c *Client) Space(ctx context.Context, name, description string, tags ...string) (protocols.SpaceInfo, error) {
-	if c.nodeID == "" {
+	nodeID := c.NodeID()
+	if nodeID == "" {
 		return protocols.SpaceInfo{}, fmt.Errorf("No node: call register_node() first")
 	}
-	headers := map[string]string{"X-Node-ID": c.nodeID}
-	if c.accessKey != "" {
-		headers["X-Access-Key"] = c.accessKey
+	headers := map[string]string{"X-Node-ID": nodeID}
+	if accessKey := c.AccessKey(); accessKey != "" {
+		headers["X-Access-Key"] = accessKey
 	}
 	var info protocols.SpaceInfo
 	if err := c.do(ctx, http.MethodPost, "/spaces", headers, protocols.SpaceCreate{Name: name, Description: description, Tags: tags}, &info); err != nil {
@@ -172,22 +281,24 @@ func (c *Client) Space(ctx context.Context, name, description string, tags ...st
 }
 
 func (c *Client) Send(ctx context.Context, spaceID string, body protocols.SendMessage) (protocols.Message, error) {
-	if c.nodeID == "" {
+	nodeID := c.NodeID()
+	if nodeID == "" {
 		return protocols.Message{}, fmt.Errorf("No sender: call register_node() first")
 	}
 	var message protocols.Message
-	if err := c.do(ctx, http.MethodPost, "/spaces/"+url.PathEscape(spaceID)+"/messages", map[string]string{"X-Node-ID": c.nodeID}, body, &message); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/spaces/"+url.PathEscape(spaceID)+"/messages", map[string]string{"X-Node-ID": nodeID}, body, &message); err != nil {
 		return protocols.Message{}, err
 	}
 	return message, nil
 }
 
 func (c *Client) Read(ctx context.Context, spaceID string, opts protocols.ReadOptions) ([]protocols.Message, error) {
-	if c.nodeID == "" {
+	nodeID := c.NodeID()
+	if nodeID == "" {
 		return nil, fmt.Errorf("No node: call register_node() first")
 	}
 	var messages []protocols.Message
-	if err := c.do(ctx, http.MethodGet, readEndpoint(spaceID, opts), map[string]string{"X-Node-ID": c.nodeID}, nil, &messages); err != nil {
+	if err := c.do(ctx, http.MethodGet, readEndpoint(spaceID, opts), map[string]string{"X-Node-ID": nodeID}, nil, &messages); err != nil {
 		return nil, err
 	}
 	return messages, nil
@@ -221,8 +332,11 @@ func (c *Client) Subscribe(ctx context.Context, spaceID string, opts ...Subscrib
 		return nil, nil, nil, err
 	}
 	req.Header.Set("Accept", "text/event-stream")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	c.mu.RLock()
+	token := c.token
+	c.mu.RUnlock()
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -339,8 +453,11 @@ func (c *Client) do(ctx context.Context, method, endpoint string, headers map[st
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	c.mu.RLock()
+	token := c.token
+	c.mu.RUnlock()
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	for key, value := range headers {
 		req.Header.Set(key, value)

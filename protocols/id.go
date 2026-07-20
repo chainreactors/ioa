@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 )
 
 func NewID() string {
@@ -25,4 +26,13 @@ func NewToken() string {
 func TokenHash(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])
+}
+
+func ValidID(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != 32 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }
