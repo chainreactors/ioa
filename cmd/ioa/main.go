@@ -8,8 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
-	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -35,12 +33,12 @@ type options struct {
 	Quiet    bool   `short:"q" long:"quiet" description:"Quiet mode"`
 	JSON     bool   `long:"json" description:"Output results in JSON format"`
 
-	// Client commands
+	// Client commands (space/send/read come from the shared client package)
+	client.CommandOptions
+
+	// Other client commands
 	Init     initCmd     `command:"init" description:"Export protocol skills and schemas to .agent/skills/"`
 	Register registerCmd `command:"register" description:"Register a new node and obtain a token"`
-	Space    spaceCmd    `command:"space" description:"Create or join a space"`
-	Send     sendCmd     `command:"send" description:"Send a message to a space"`
-	Read     readCmd     `command:"read" description:"Read messages from a space"`
 
 	// Server commands
 	Serve    serveCmd    `command:"serve" description:"Start the IOA HTTP server"`
@@ -49,8 +47,6 @@ type options struct {
 	Context  contextCmd  `command:"context" description:"View message thread/context"`
 	Nodes    nodesCmd    `command:"nodes" description:"List nodes"`
 }
-
-// Client command structs
 
 type initCmd struct {
 	Output string `long:"output" short:"o" description:"Output directory" default:".agent/skills"`
@@ -63,37 +59,6 @@ type initCmd struct {
 type registerCmd struct {
 	AccessKey string `long:"access-key" env:"IOA_ACCESS_KEY" description:"Server access key" required:"yes"`
 }
-
-type spaceCmd struct {
-	Tags []string `long:"tag" description:"Space tag (repeatable)"`
-
-	Positional struct {
-		Name        string `positional-arg-name:"name" required:"yes"`
-		Description string `positional-arg-name:"description" required:"yes"`
-	} `positional-args:"yes"`
-}
-
-type sendCmd struct {
-	SpaceID       string `long:"space" short:"s" description:"Space ID" required:"yes"`
-	ContentType   string `long:"content-type" short:"t" description:"Message content type (e.g. checkpoint, handoff, team, swarm)"`
-	Content       string `long:"content" short:"c" description:"Message content JSON"`
-	RefMsgs       string `long:"ref-messages" description:"Comma-separated message IDs to reference"`
-	RefNodes      string `long:"ref-nodes" description:"Comma-separated node IDs to target"`
-	Meta          string `long:"meta" description:"Message metadata JSON"`
-	ContentSchema string `long:"content-schema" description:"JSON Schema for content (declarative, per-message)"`
-}
-
-type readCmd struct {
-	SpaceID   string `long:"space" short:"s" description:"Space ID" required:"yes"`
-	MessageID string `long:"message" short:"m" description:"Message ID for context retrieval"`
-	Direction string `long:"direction" short:"d" description:"Traversal direction: upstream, downstream (requires --message)"`
-	After     string `long:"after" description:"Cursor: read messages after this ID"`
-	Limit     int    `long:"limit" short:"l" description:"Maximum number of messages"`
-	All       bool   `long:"all" short:"a" description:"Read all messages (not just addressed to this node)"`
-	Listen    bool   `long:"listen" description:"Stream new messages via SSE (use with --message for thread-scoped)"`
-}
-
-// Server command structs
 
 type serveCmd struct {
 	AccessKey string `long:"access-key" env:"IOA_ACCESS_KEY" description:"Access key for client registration (enables auth when set)"`
@@ -175,7 +140,7 @@ Examples:
   ioa messages default
   ioa nodes`
 
-	registerProtocols(parser)
+	client.RegisterProtocolCommands(parser)
 
 	if _, err := parser.Parse(); err != nil {
 		if flagsErr, ok := err.(*goflags.Error); ok && flagsErr.Type == goflags.ErrHelp {
@@ -216,70 +181,21 @@ Examples:
 		err = runNodes(opts)
 	// Client commands
 	case "register":
-		c, cerr := newAuthClient(opts)
-		if cerr != nil {
-			err = cerr
-		} else {
+		var c *client.Client
+		c, err = newAuthClient(opts)
+		if err == nil {
 			err = runRegister(context.Background(), c, opts.NodeName, opts.Register)
 		}
-	case "space":
-		c, cerr := newAuthClient(opts)
-		if cerr != nil {
-			err = cerr
-		} else {
-			err = runSpace(context.Background(), c, opts.NodeName, opts.Space)
-		}
-	case "send":
-		c, cerr := newAuthClient(opts)
-		if cerr != nil {
-			err = cerr
-		} else {
-			err = runSendDispatch(context.Background(), c, opts.NodeName, opts.Send, active)
-		}
-	case "read":
-		c, cerr := newAuthClient(opts)
-		if cerr != nil {
-			err = cerr
-		} else {
-			err = runReadDispatch(context.Background(), c, opts.NodeName, opts.Read, active)
+	case "space", "send", "read":
+		var c *client.Client
+		c, err = newAuthClient(opts)
+		if err == nil {
+			err = client.Dispatch(context.Background(), c, opts.NodeName, &opts.CommandOptions, active, os.Stdout)
 		}
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		os.Exit(1)
-	}
-}
-
-// ──────────────────────────────────────────────────────────────────
-// Protocol registration (client)
-// ──────────────────────────────────────────────────────────────────
-
-func registerProtocols(parser *goflags.Parser) {
-	sendCommand := parser.Find("send")
-	readCommand := parser.Find("read")
-
-	for _, p := range protocols.All() {
-		if p.Send != nil && sendCommand != nil {
-			flags := p.Send.Flags
-			if flags == nil {
-				flags = &struct{}{}
-			}
-			sendCommand.AddCommand(p.Name, p.Send.Description, "", flags)
-		}
-		if p.Read != nil && readCommand != nil {
-			flags := p.Read.Flags
-			if flags == nil {
-				flags = &struct{}{}
-			}
-			readCommand.AddCommand(p.Name, p.Read.Description, "", flags)
-		}
-	}
-
-	if sendCommand != nil {
-		sendCommand.SubcommandsOptional = true
-	}
-	if readCommand != nil {
-		readCommand.SubcommandsOptional = true
 	}
 }
 
@@ -294,18 +210,6 @@ func newAuthClient(opts options) (*client.Client, error) {
 	return client.NewClient(opts.URL, "")
 }
 
-func ensureNode(ctx context.Context, c *client.Client, name string) error {
-	if c.NodeID() != "" {
-		return nil
-	}
-	_, err := c.RegisterNode(ctx, name, "", map[string]interface{}{})
-	return err
-}
-
-// ──────────────────────────────────────────────────────────────────
-// Client command handlers
-// ──────────────────────────────────────────────────────────────────
-
 func runRegister(ctx context.Context, c *client.Client, nodeName string, cmd registerCmd) error {
 	resp, err := c.Register(ctx, cmd.AccessKey, nodeName, "", map[string]interface{}{})
 	if err != nil {
@@ -313,162 +217,6 @@ func runRegister(ctx context.Context, c *client.Client, nodeName string, cmd reg
 	}
 	return writeJSON(resp)
 }
-
-func runSpace(ctx context.Context, c *client.Client, nodeName string, cmd spaceCmd) error {
-	if err := ensureNode(ctx, c, nodeName); err != nil {
-		return err
-	}
-	info, err := c.Space(ctx, cmd.Positional.Name, cmd.Positional.Description, cmd.Tags...)
-	if err != nil {
-		return err
-	}
-	msgs, _ := c.Read(ctx, info.ID, protocols.ReadOptions{All: true})
-	var startMsgs []protocols.Message
-	for _, m := range msgs {
-		if len(m.Refs.Messages) == 0 && len(m.Refs.Nodes) == 0 {
-			startMsgs = append(startMsgs, m)
-		}
-	}
-	return writeJSON(struct {
-		protocols.SpaceInfo
-		StartMessages []protocols.Message `json:"start_messages"`
-	}{SpaceInfo: info, StartMessages: startMsgs})
-}
-
-func runSendDispatch(ctx context.Context, c *client.Client, nodeName string, cmd sendCmd, active *goflags.Command) error {
-	if sub := active.Active; sub != nil {
-		return execProtocolSend(ctx, c, nodeName, cmd.SpaceID, sub)
-	}
-	if cmd.Content == "" {
-		return fmt.Errorf("send: --content is required")
-	}
-	if err := ensureNode(ctx, c, nodeName); err != nil {
-		return err
-	}
-	var content map[string]interface{}
-	if err := json.Unmarshal([]byte(cmd.Content), &content); err != nil {
-		return fmt.Errorf("send: invalid content JSON: %s", err)
-	}
-	body := protocols.SendMessage{ContentType: cmd.ContentType, Content: content}
-	if cmd.RefMsgs != "" {
-		if body.Refs == nil {
-			body.Refs = &protocols.Ref{}
-		}
-		body.Refs.Messages = splitComma(cmd.RefMsgs)
-	}
-	if cmd.RefNodes != "" {
-		if body.Refs == nil {
-			body.Refs = &protocols.Ref{}
-		}
-		body.Refs.Nodes = splitComma(cmd.RefNodes)
-	}
-	if cmd.Meta != "" {
-		var meta map[string]interface{}
-		if err := json.Unmarshal([]byte(cmd.Meta), &meta); err != nil {
-			return fmt.Errorf("send: invalid meta JSON: %s", err)
-		}
-		body.Meta = meta
-	}
-	if cmd.ContentSchema != "" {
-		var schema map[string]interface{}
-		if err := json.Unmarshal([]byte(cmd.ContentSchema), &schema); err != nil {
-			return fmt.Errorf("send: invalid content-schema JSON: %s", err)
-		}
-		body.ContentSchema = schema
-	}
-	msg, err := c.Send(ctx, cmd.SpaceID, body)
-	if err != nil {
-		return err
-	}
-	return writeJSON(msg)
-}
-
-func runReadDispatch(ctx context.Context, c *client.Client, nodeName string, cmd readCmd, active *goflags.Command) error {
-	if sub := active.Active; sub != nil {
-		return execProtocolRead(ctx, c, nodeName, cmd.SpaceID, sub)
-	}
-	if err := ensureNode(ctx, c, nodeName); err != nil {
-		return err
-	}
-	if cmd.Listen {
-		return runReadListen(ctx, c, cmd)
-	}
-	msgs, err := c.Read(ctx, cmd.SpaceID, protocols.ReadOptions{
-		MessageID: cmd.MessageID,
-		Direction: cmd.Direction,
-		After:     cmd.After,
-		Limit:     cmd.Limit,
-		All:       cmd.All,
-	})
-	if err != nil {
-		return err
-	}
-	return writeJSON(msgs)
-}
-
-func runReadListen(ctx context.Context, c *client.Client, cmd readCmd) error {
-	var opts []client.SubscribeOption
-	if cmd.MessageID != "" {
-		opts = append(opts, client.WithMessage(cmd.MessageID))
-	}
-	messages, errs, cancel, err := c.Subscribe(ctx, cmd.SpaceID, opts...)
-	if err != nil {
-		return err
-	}
-	defer cancel()
-
-	enc := json.NewEncoder(os.Stdout)
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case err, ok := <-errs:
-			if ok && err != nil {
-				return err
-			}
-		case msg, ok := <-messages:
-			if !ok {
-				return nil
-			}
-			_ = enc.Encode(msg)
-		}
-	}
-}
-
-func execProtocolSend(ctx context.Context, c *client.Client, nodeName, spaceID string, sub *goflags.Command) error {
-	if err := ensureNode(ctx, c, nodeName); err != nil {
-		return err
-	}
-	p := protocols.Get(sub.Name)
-	if p == nil || p.Send == nil {
-		return fmt.Errorf("send: unknown subcommand %q", sub.Name)
-	}
-	env := &protocols.Env{Client: c, SpaceID: spaceID, NodeName: nodeName}
-	result, err := p.Send.Execute(ctx, env, p.Send.Flags)
-	if err != nil {
-		return err
-	}
-	fmt.Println(result)
-	return nil
-}
-
-func execProtocolRead(ctx context.Context, c *client.Client, nodeName, spaceID string, sub *goflags.Command) error {
-	if err := ensureNode(ctx, c, nodeName); err != nil {
-		return err
-	}
-	p := protocols.Get(sub.Name)
-	if p == nil || p.Read == nil {
-		return fmt.Errorf("read: unknown subcommand %q", sub.Name)
-	}
-	env := &protocols.Env{Client: c, SpaceID: spaceID, NodeName: nodeName}
-	result, err := p.Read.Execute(ctx, env, p.Read.Flags)
-	if err != nil {
-		return err
-	}
-	fmt.Println(result)
-	return nil
-}
-
 
 func runInit(cmd initCmd) error {
 	all, err := skills.LoadAll()
@@ -533,7 +281,7 @@ func runServe(opts options) error {
 	defer cancel()
 
 	sigChan := make(chan os.Signal, 2)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigChan, os.Interrupt)
 	go func() {
 		count := 0
 		for range sigChan {
@@ -638,9 +386,6 @@ func runCtx(opts options) error {
 	if err != nil {
 		return err
 	}
-	if opts.JSON {
-		return writeJSON(messages)
-	}
 	if len(messages) == 0 {
 		fmt.Fprintf(os.Stderr, "no messages in context of %s\n", msgID)
 		return nil
@@ -726,15 +471,3 @@ func writeJSON(v interface{}) error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
 }
-
-func splitComma(s string) []string {
-	var result []string
-	for _, part := range strings.Split(s, ",") {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	return result
-}
-
