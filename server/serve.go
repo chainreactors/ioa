@@ -51,11 +51,7 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 
 	service := NewService(store, accessKey)
 
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", newMCPHandler(service))
-	mux.Handle("/", NewHandler(service))
-
-	handler := AuthMiddleware(service)(mux)
+	handler := NewHTTPHandler(service)
 
 	srv := &http.Server{Addr: host, Handler: handler}
 	go func() {
@@ -72,4 +68,13 @@ func RunServer(ctx context.Context, opts ServerOptions) error {
 		return err
 	}
 	return nil
+}
+
+// NewHTTPHandler composes authenticated REST, SSE and MCP endpoints around an
+// existing service. The caller owns the listener and the service's store.
+func NewHTTPHandler(service *Service) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", newMCPHandler(service))
+	mux.Handle("/", NewHandler(service))
+	return AuthMiddleware(service)(mux)
 }
