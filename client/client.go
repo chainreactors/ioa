@@ -358,9 +358,9 @@ func (c *Client) Subscribe(ctx context.Context, spaceID string, opts ...Subscrib
 	messages := make(chan protocols.Message, 16)
 	errs := make(chan error, 1)
 	done := make(chan struct{})
+	var once sync.Once
 	cancel := func() {
-		close(done)
-		_ = resp.Body.Close()
+		once.Do(func() { close(done); _ = resp.Body.Close() })
 	}
 
 	go func() {

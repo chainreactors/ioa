@@ -338,10 +338,9 @@ func (h *Handler) sseNode(w http.ResponseWriter, r *http.Request, nodeID string)
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
 	ch, unsubscribe := h.service.Hub().SubscribeNode(nodeID)
 	defer unsubscribe()
+	flusher.Flush()
 
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -645,10 +644,9 @@ func (h *Handler) sse(w http.ResponseWriter, r *http.Request, spaceID, messageID
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
 	ch, unsubscribe := h.service.Hub().Subscribe(spaceID)
 	defer unsubscribe()
+	flusher.Flush()
 
 	seen := make(map[string]struct{})
 	if tracker != nil {
