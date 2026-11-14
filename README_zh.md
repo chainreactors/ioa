@@ -141,7 +141,7 @@ ioa init -o .agent/skills swarm   # 指定 skill
 
 ## Swarm 多 Agent 协同
 
-适用于自主多 Agent 场景（如 [aiscan](https://github.com/chainreactors/aiscan) 安全扫描）：
+适用于自主多 Agent 场景（如 [cyber-scan](https://github.com/chainreactors/cyber-harness) 安全扫描）：
 
 **1. 启动服务端 + 注册节点：**
 
@@ -191,7 +191,7 @@ curl http://localhost:8765/spaces/<sid>/messages?all=true
 ```go
 type WebIdentity struct{ Ref protocols.NodeRef }
 func (i WebIdentity) IOABinding() protocols.IdentityBinding {
-    return protocols.IdentityBinding{Namespace: "aiscan.web", Subject: i.Ref.URI()}
+    return protocols.IdentityBinding{Namespace: "cyber-harness.web", Subject: i.Ref.URI()}
 }
 
 c, _ := client.NewClient("http://127.0.0.1:8765", "")

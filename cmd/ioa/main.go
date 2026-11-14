@@ -248,21 +248,20 @@ func runInit(cmd initCmd) error {
 			return fmt.Errorf("mkdir %s: %w", dir, err)
 		}
 
-		body, err := skills.ReadSkill(s.Name)
-		if err == nil && body != "" {
-			raw, _ := skills.ReadSkillRaw(s.Name)
-			if len(raw) > 0 {
-				if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), raw, 0o644); err != nil {
-					return err
-				}
-			}
+		raw, err := skills.ReadSkillRaw(s.Name)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), raw, 0o644); err != nil {
+			return err
 		}
 
 		schemaRaw, err := skills.ReadSchemaRaw(s.Name)
-		if err == nil {
-			if err := os.WriteFile(filepath.Join(dir, "schema.json"), schemaRaw, 0o644); err != nil {
-				return err
-			}
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, "schema.json"), schemaRaw, 0o644); err != nil {
+			return err
 		}
 
 		fmt.Printf("  %s/ -> SKILL.md + schema.json\n", filepath.Join(cmd.Output, s.Name))

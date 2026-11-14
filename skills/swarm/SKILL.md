@@ -10,7 +10,7 @@ A commander posts an objective to a shared IOA space. Nodes in the space self-or
 ## Roles
 
 - **Commander** (aide): posts objectives, monitors, mediates human review. Does NOT assign specific work to specific nodes.
-- **Node** (aiscan): receives objectives, self-organizes with peers, executes, reports.
+- **Node** (e.g. cyber-scan or cyber-audit): receives objectives, self-organizes with peers, executes, reports.
 
 ## Message format
 

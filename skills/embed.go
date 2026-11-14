@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed all:*
+//go:embed */SKILL.md */schema.json
 var embeddedFS embed.FS
 
 type Frontmatter struct {
@@ -96,16 +96,9 @@ func ReadSchemaRaw(name string) ([]byte, error) {
 }
 
 func parseFrontmatter(raw string) Frontmatter {
-	normalized := strings.ReplaceAll(raw, "\r\n", "\n")
-	if !strings.HasPrefix(normalized, "---\n") {
-		return Frontmatter{}
-	}
-	end := strings.Index(normalized[4:], "\n---")
-	if end < 0 {
-		return Frontmatter{}
-	}
+	yamlBlock, _ := splitFrontmatter(raw)
 	var fm Frontmatter
-	_ = yaml.Unmarshal([]byte(normalized[4:4+end]), &fm)
+	_ = yaml.Unmarshal([]byte(yamlBlock), &fm)
 	return fm
 }
 

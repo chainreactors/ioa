@@ -141,7 +141,7 @@ Each skill exports `SKILL.md` (instructions) + `schema.json` (content structure)
 
 ## Multi-Agent Coordination
 
-For autonomous multi-agent scenarios (e.g. security scanning with [aiscan](https://github.com/chainreactors/aiscan)):
+For autonomous multi-agent scenarios (e.g. security scanning with [cyber-scan](https://github.com/chainreactors/cyber-harness)):
 
 **1. Start server + register nodes:**
 
@@ -192,7 +192,7 @@ binding to an IOA Node in memory and submits it during registration:
 ```go
 type WebIdentity struct{ Ref protocols.NodeRef }
 func (i WebIdentity) IOABinding() protocols.IdentityBinding {
-    return protocols.IdentityBinding{Namespace: "aiscan.web", Subject: i.Ref.URI()}
+    return protocols.IdentityBinding{Namespace: "cyber-harness.web", Subject: i.Ref.URI()}
 }
 
 c, _ := client.NewClient("http://127.0.0.1:8765", "")
